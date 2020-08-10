@@ -61,8 +61,9 @@ func New(dst string) (*Ping, error) {
 func (p *Ping) Start() error {
 	go p.pingSend()
 	go p.pingRecv()
+	go p.ip.Eth.Arp.Handle()
 
-	fmt.Println("----- gotcp ping start -----")
+	fmt.Println("[info] gotcp ping start")
 	p.ip.Show()
 	fmt.Printf("pid: %d\n", p.ident)
 	fmt.Printf("dest: %s\n", p.dst)
@@ -79,8 +80,6 @@ func (p *Ping) start() error {
 	buf := make([]byte, 512)
 	defer p.ip.Eth.Close()
 
-	arpProtocol := arp.New(arp.NewTable())
-
 	p.queue <- struct{}{}
 
 	for {
@@ -94,9 +93,9 @@ func (p *Ping) start() error {
 		}
 		switch frame.Type() {
 		case ethernet.ETHER_TYPE_ARP:
-			arpProtocol.Recv(frame.Payload())
+			p.ip.Eth.Arp.Recv(frame.Payload())
 		case ethernet.ETHER_TYPE_IP:
-			p.Buffer <- buf
+			p.Buffer <- frame.Payload()
 		}
 	}
 }
@@ -105,7 +104,6 @@ func (p *Ping) pingRecv() {
 	for {
 		buf, ok := <-p.Buffer
 		if ok {
-			fmt.Println("[info] ping recv sequence")
 			ipPacket, err := ippacket.New(buf)
 			if err != nil {
 				continue
@@ -118,22 +116,25 @@ func (p *Ping) pingRecv() {
 			case icmp.EchoReply:
 				message, err := icmp.NewEchoMessage(packet.Data)
 				if err != nil {
+					fmt.Printf("[error] failed to encode echo payload: %v\n", err)
 					continue
 				}
 				if len(p.SendTime) <= int(message.Seq) {
+					fmt.Printf("[error] invalid seq: %d\n", message.Seq)
 					continue
 				}
 				sendTime := p.SendTime[int(message.Seq)].UnixNano() / int64(time.Microsecond)
 				recvTime := time.Now().UnixNano() / int64(time.Microsecond)
 				sec := recvTime - sendTime
 
-				fmt.Printf("%d bytes from %s: icmp_seq=%d ttl=%d time=%f ms",
+				fmt.Printf("%d bytes from %s: icmp_seq=%d ttl=%d time=%f ms\n",
 					ipPacket.Header.Length,
 					ipPacket.Header.Src.String(),
 					message.Seq,
 					ipPacket.Header.TTL,
 					sec)
 
+				time.Sleep(time.Second)
 				p.queue <- struct{}{}
 			}
 		}
@@ -144,7 +145,6 @@ func (p *Ping) pingSend() {
 	for {
 		_, ok := <-p.queue
 		if ok {
-			fmt.Println("[info] ping send sequence")
 			p.SendTime = append(p.SendTime, time.Now())
 			p.seqNo += 1
 			message := icmp.EchoMessage{
@@ -152,6 +152,7 @@ func (p *Ping) pingSend() {
 				Seq:   uint16(p.seqNo),
 				Data:  []byte("ping from gotcp"),
 			}
+			//fmt.Printf("[info] ping message ident=%v, seq=%v\n", message.Ident, message.Seq)
 			data, err := message.Serialize()
 			if err != nil {
 				log.Printf("failed to serialize icmp echo message: %v", err)
@@ -162,7 +163,6 @@ func (p *Ping) pingSend() {
 				log.Printf("failed to build icmp echo request: %v", err)
 				continue
 			}
-			req.Show()
 			reqBytes, err := req.Serialize()
 			if err != nil {
 				log.Printf("failed to serialize icmp echo request: %v", err)

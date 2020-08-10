@@ -13,7 +13,7 @@ type Ethernet struct {
 	*proto.ProtocolBuffer
 	iface   interfaces.Iface
 	address *ethernet.HardwareAddress
-	arp     *arp.Arp
+	Arp     *arp.Arp
 }
 
 func New(iface interfaces.Iface, arp *arp.Arp) (*Ethernet, error) {
@@ -28,7 +28,7 @@ func New(iface interfaces.Iface, arp *arp.Arp) (*Ethernet, error) {
 	return &Ethernet{
 		iface:   iface,
 		address: addr,
-		arp:     arp,
+		Arp:     arp,
 	}, nil
 }
 
@@ -45,8 +45,7 @@ func (e *Ethernet) Close() error {
 }
 
 func (e *Ethernet) Recv(buf []byte) (int, error) {
-	fmt.Println("ethernet recv")
-	return e.Recv(buf)
+	return e.iface.Recv(buf)
 
 }
 
@@ -55,10 +54,10 @@ func (e *Ethernet) ipSend(dstmac *ethernet.HardwareAddress, dstip *ipv4.IPAddres
 		return 0, fmt.Errorf("dest address is not specified.")
 	}
 	if dstmac == nil {
-		entry := e.arp.Table.Search(dstip)
+		entry := e.Arp.Table.Search(dstip)
 		if entry == nil {
-			// send arp request
-			req, err := e.arp.Request(dstip)
+			// send Arp request
+			req, err := e.Arp.Request(dstip)
 			if err != nil {
 				return 0, err
 			}
@@ -72,9 +71,7 @@ func (e *Ethernet) ipSend(dstmac *ethernet.HardwareAddress, dstip *ipv4.IPAddres
 
 			// enqueue in wait queue
 			for {
-				fmt.Println("wait")
-				_, ok := <-e.arp.Updated
-				fmt.Println("dest mac addr is found")
+				_, ok := <-e.Arp.Updated
 				if ok {
 					return e.ipSend(dstmac, dstip, data)
 				}
@@ -105,7 +102,6 @@ func (e *Ethernet) arpSend(dst *ethernet.HardwareAddress, data []byte) error {
 	if _, err := e.iface.Send(frameByte); err != nil {
 		return err
 	}
-	fmt.Println("arp packet send.")
 	return nil
 }
 

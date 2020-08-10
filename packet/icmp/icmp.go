@@ -42,14 +42,18 @@ func New(data []byte) (*Packet, error) {
 	if err := binary.Read(buf, binary.BigEndian, header); err != nil {
 		return nil, fmt.Errorf("encoding error: %v", err)
 	}
-	return &Packet{
+	packet := &Packet{
 		Header: *header,
 		Data:   buf.Bytes(),
-	}, nil
+	}
+	if err := packet.RecalculateChecksum(); err != nil {
+		return nil, err
+	}
+	return packet, nil
 }
 
 func (icmp *Packet) Serialize() ([]byte, error) {
-	buf := bytes.NewBuffer(make([]byte, 8))
+	buf := bytes.NewBuffer(make([]byte, 0))
 	if err := binary.Write(buf, binary.BigEndian, icmp.Header); err != nil {
 		return nil, err
 	}
@@ -61,7 +65,7 @@ func (icmp *Packet) Serialize() ([]byte, error) {
 
 func (icmphdr *Header) Show() {
 	fmt.Println("----------icmp header----------")
-	fmt.Printf("type = %v\n", icmphdr.Type)
+	fmt.Printf("type = %v(%d)\n", icmphdr.Type, icmphdr.Type)
 	fmt.Printf("code = %02x\n", icmphdr.Code)
 	fmt.Printf("checksum = %02x\n", icmphdr.Checksum)
 }
@@ -69,6 +73,17 @@ func (icmphdr *Header) Show() {
 func (icmp Packet) Show() {
 	icmp.Header.Show()
 	fmt.Printf("data = %v\n", icmp.Data)
+}
+
+func (icmp *Packet) RecalculateChecksum() error {
+	icmp.Header.Checksum = uint16(0)
+	buf, err := icmp.Serialize()
+	if err != nil {
+		return err
+	}
+	sum := util.Checksum2(buf, len(buf), 0)
+	icmp.Header.Checksum = sum
+	return nil
 }
 
 func (typ Type) String() string {
@@ -109,17 +124,16 @@ func Build(typ Type, code uint8, data []byte) (*Packet, error) {
 	if err != nil {
 		return nil, err
 	}
-	sum := util.Checksum(buf, len(buf), 0)
+	sum := util.Checksum2(buf, len(buf), 0)
 	packet.Header.Checksum = sum
 	return packet, nil
 }
 
 func NewEchoMessage(data []byte) (*EchoMessage, error) {
 	message := &EchoMessage{}
-	buf := bytes.NewBuffer(data)
-	if err := binary.Read(buf, binary.BigEndian, message); err != nil {
-		return nil, fmt.Errorf("encoding error: %v", err)
-	}
+	message.Ident = binary.BigEndian.Uint16(data[0:2])
+	message.Seq = binary.BigEndian.Uint16(data[2:4])
+	message.Data = data[4:]
 	return message, nil
 }
 

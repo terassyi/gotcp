@@ -77,9 +77,11 @@ func (ip *Ipv4) manage(packet *ipv4.Packet) error {
 }
 
 func (ip *Ipv4) Send(dst ipv4.IPAddress, protocol ipv4.IPProtocol, data []byte) (int, error) {
-	fmt.Println("[info] ip packet send")
 	packet, err := ipv4.Build(*ip.Address, dst, protocol, data)
 	if err != nil {
+		return 0, err
+	}
+	if err := packet.ReCalculateChecksum(); err != nil {
 		return 0, err
 	}
 	ipByte, err := packet.Serialize()
@@ -98,7 +100,7 @@ func siocgifaddr(name string) ([]byte, error) {
 
 	type sockaddr struct {
 		family uint16
-		addr   [4]byte
+		addr   [14]byte
 	}
 
 	soc, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM, 0)
@@ -115,5 +117,5 @@ func siocgifaddr(name string) ([]byte, error) {
 	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(soc), syscall.SIOCGIFADDR, uintptr(unsafe.Pointer(&ifreq))); errno != 0 {
 		return nil, errno
 	}
-	return ifreq.addr.addr[:], nil
+	return ifreq.addr.addr[2:6], nil
 }

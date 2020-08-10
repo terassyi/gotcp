@@ -57,9 +57,11 @@ func (ap *Arp) Recv(buf []byte) {
 
 // Handle will be called with goroutine
 func (ap *Arp) Handle() {
+	//fmt.Println("[info] arp handle start")
 	for {
 		buf, ok := <-ap.Buffer
 		if ok {
+			//fmt.Println("[info] receive arp packet")
 			packet, err := arp.New(buf)
 			if err != nil {
 				log.Printf("arp packet serialize error: %v", err)
