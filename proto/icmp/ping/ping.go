@@ -43,7 +43,7 @@ func New(dst string) (*Ping, error) {
 	if err != nil {
 		return nil, err
 	}
-	ip, err := ipv4.New(e, nil)
+	ip, err := ipv4.New(e, nil, nil)
 	if err != nil {
 		return nil, err
 	}

@@ -7,6 +7,7 @@ import (
 	"github.com/terassyi/gotcp/proto"
 	"github.com/terassyi/gotcp/proto/ethernet"
 	"github.com/terassyi/gotcp/proto/icmp"
+	"github.com/terassyi/gotcp/proto/tcp"
 	"log"
 	"syscall"
 	"unsafe"
@@ -17,9 +18,10 @@ type Ipv4 struct {
 	Eth     *ethernet.Ethernet
 	Address *ipv4.IPAddress
 	Icmp    *icmp.Icmp
+	Tcp     *tcp.Tcp
 }
 
-func New(eth *ethernet.Ethernet, i *icmp.Icmp) (*Ipv4, error) {
+func New(eth *ethernet.Ethernet, i *icmp.Icmp, tcp *tcp.Tcp) (*Ipv4, error) {
 	addr, err := siocgifaddr(eth.Name())
 	if err != nil {
 		return nil, err
@@ -34,6 +36,7 @@ func New(eth *ethernet.Ethernet, i *icmp.Icmp) (*Ipv4, error) {
 		Eth:            eth,
 		Address:        a,
 		Icmp:           i,
+		Tcp:            tcp,
 	}, nil
 }
 
@@ -57,6 +60,8 @@ func (ip *Ipv4) Handle() {
 				log.Printf("ipv4 packet serialize error: %v", err)
 				return
 			}
+			//packet.Header.Show()
+			fmt.Printf("[info] %s\n", packet.Direction())
 			if err := ip.manage(packet); err != nil {
 				log.Println(err)
 				return
@@ -65,11 +70,28 @@ func (ip *Ipv4) Handle() {
 	}
 }
 
+func (ip *Ipv4) HandlePacket(buf []byte) {
+	packet, err := ipv4.New(buf)
+	if err != nil {
+		log.Printf("ipv4 packet serialize error: %v", err)
+		return
+	}
+	//packet.Header.Show()
+	fmt.Printf("[info] %s\n", packet.Direction())
+	if err := ip.manage(packet); err != nil {
+		log.Println(err)
+		return
+	}
+}
+
 func (ip *Ipv4) manage(packet *ipv4.Packet) error {
 
 	switch packet.Header.Protocol {
 	case ipv4.IPICMPv4Protocol:
 		ip.Icmp.Recv(packet.Data)
+	case ipv4.IPTCPProtocol:
+		//ip.Tcp.Recv(packet.Data)
+		go ip.Tcp.HandlePacket(packet.Data)
 	default:
 		return fmt.Errorf("unsupported protocol")
 	}

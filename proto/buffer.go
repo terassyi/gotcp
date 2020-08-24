@@ -5,5 +5,5 @@ type ProtocolBuffer struct {
 }
 
 func NewProtocolBuffer() *ProtocolBuffer {
-	return &ProtocolBuffer{Buffer: make(chan []byte, 128)}
+	return &ProtocolBuffer{Buffer: make(chan []byte, 4)}
 }

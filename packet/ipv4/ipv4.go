@@ -234,3 +234,7 @@ func StringToIPAddress(addr string) (*IPAddress, error) {
 	}
 	return Address(address)
 }
+
+func (ip *Packet) Direction() string {
+	return fmt.Sprintf("%s -> %s", ip.Header.Src.String(), ip.Header.Dst.String())
+}

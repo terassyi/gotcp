@@ -3,13 +3,14 @@ package tcp
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"strings"
 )
 
 // document http://www5d.biglobe.ne.jp/stssk/rfc/rfc793j.html
 
-type TCPHeader struct {
+type Header struct {
 	SourcePort      uint16 // 16bits
 	DestinationPort uint16 // 16bits
 	Sequence        uint32 // 32bits
@@ -22,8 +23,8 @@ type TCPHeader struct {
 	Urgent            uint16
 }
 
-type TCPPacket struct {
-	Header TCPHeader
+type Packet struct {
+	Header Header
 	Option []byte
 	Data   []byte
 }
@@ -112,7 +113,7 @@ func (f ControlFlag) Urg() bool {
 	return false
 }
 
-func (tcphdr *TCPHeader) PrintTCPHeader() {
+func (tcphdr *Header) Show() {
 	fmt.Println("-------tcp header-------")
 	fmt.Printf("source port = %v\n", tcphdr.SourcePort)
 	fmt.Printf("destination port = %v\n", tcphdr.DestinationPort)
@@ -125,14 +126,14 @@ func (tcphdr *TCPHeader) PrintTCPHeader() {
 	fmt.Println("------------------------")
 }
 
-func NewTCPPacket(data []byte) (*TCPPacket, error) {
-	header := &TCPHeader{}
+func New(data []byte) (*Packet, error) {
+	header := &Header{}
 	buf := bytes.NewBuffer(data)
 	if err := binary.Read(buf, binary.BigEndian, header); err != nil {
 		return nil, fmt.Errorf("failed to read header: %v", err)
 	}
 	optionLength := header.OffsetControlFlag.Offset() - 20
-	packet := &TCPPacket{
+	packet := &Packet{
 		Header: *header,
 		Option: make([]byte, optionLength),
 	}
@@ -144,7 +145,7 @@ func NewTCPPacket(data []byte) (*TCPPacket, error) {
 	return packet, nil
 }
 
-func (tp *TCPPacket) Serialize() ([]byte, error) {
+func (tp *Packet) Serialize() ([]byte, error) {
 	buf := bytes.NewBuffer(make([]byte, 0))
 	if err := binary.Write(buf, binary.BigEndian, tp.Header); err != nil {
 		return nil, fmt.Errorf("failed to write: %v", err)
@@ -155,8 +156,8 @@ func (tp *TCPPacket) Serialize() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func BuildTCPPacket(src, dst uint16, seq, ack uint32, flag ControlFlag, window, urgent uint16, data []byte) (*TCPPacket, error) {
-	header := &TCPHeader{
+func Build(src, dst uint16, seq, ack uint32, flag ControlFlag, window, urgent uint16, data []byte) (*Packet, error) {
+	header := &Header{
 		SourcePort:      src,
 		DestinationPort: dst,
 		Sequence:        seq,
@@ -168,17 +169,15 @@ func BuildTCPPacket(src, dst uint16, seq, ack uint32, flag ControlFlag, window, 
 	// no option
 	cf := newOffsetControlFlag(uint8(20), flag)
 	header.OffsetControlFlag = cf
-	packet := &TCPPacket{
+	packet := &Packet{
 		Header: *header,
 		Data:   data,
 	}
-	fmt.Println("Build TCP packet >>>>>>>>>>>>>>>>>>>>>>>>>>>")
-	packet.Header.PrintTCPHeader()
 	return packet, nil
 }
 
-func (tcpp *TCPPacket) PrintTCPPacket() {
-	tcpp.Header.PrintTCPHeader()
-	fmt.Println(string(tcpp.Data))
+func (tcpp *Packet) Show() {
+	tcpp.Header.Show()
+	fmt.Println(hex.Dump(tcpp.Data))
 	fmt.Println("------------------------")
 }

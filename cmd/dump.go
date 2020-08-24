@@ -11,6 +11,7 @@ import (
 	eth "github.com/terassyi/gotcp/proto/ethernet"
 	"github.com/terassyi/gotcp/proto/icmp"
 	"github.com/terassyi/gotcp/proto/ipv4"
+	"github.com/terassyi/gotcp/proto/tcp"
 )
 
 type DumpCommand struct {
@@ -38,24 +39,32 @@ func (d *DumpCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...interface
 	if err != nil {
 		panic(err)
 	}
-	buf := make([]byte, 512)
 	defer iface.Close()
 
 	arpProtocol := arp.New(arp.NewTable())
 	e, err := eth.New(iface, arpProtocol)
 	icmpProtocol := icmp.New()
-	ipv4Protocol, err := ipv4.New(e, icmpProtocol)
+
+	tcpProtocol, err := tcp.New()
+	if err != nil {
+		return subcommands.ExitFailure
+	}
+	ipv4Protocol, err := ipv4.New(e, icmpProtocol, tcpProtocol)
 	if err != nil {
 		fmt.Println(err)
 		return subcommands.ExitFailure
 	}
-
 	fmt.Println("start to recv")
 
+	ipv4Protocol.Show()
 	go arpProtocol.Handle()
-	go ipv4Protocol.Handle()
+	//go ipv4Protocol.Handle()
 	go icmpProtocol.Handle()
+
+	//go tcpProtocol.Handle()
+
 	for {
+		buf := make([]byte, 1500)
 		_, err := iface.Recv(buf)
 		if err != nil {
 			panic(err)
@@ -68,7 +77,8 @@ func (d *DumpCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...interface
 
 		switch frame.Type() {
 		case ethernet.ETHER_TYPE_IP:
-			ipv4Protocol.Recv(frame.Payload())
+			//ipv4Protocol.Recv(frame.Payload())
+			go ipv4Protocol.HandlePacket(frame.Payload())
 		case ethernet.ETHER_TYPE_ARP:
 			arpProtocol.Recv(frame.Payload())
 		default:

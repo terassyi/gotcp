@@ -3,6 +3,7 @@ package tcp
 import (
 	"fmt"
 	"github.com/terassyi/gotcp/packet/ipv4"
+	"github.com/terassyi/gotcp/packet/tcp"
 	"math/rand"
 	"sync"
 	"time"
@@ -15,8 +16,8 @@ type ControlBlock struct {
 	PeerAddr *ipv4.IPAddress
 	PeerPort uint16
 	State    state
-	Snd      SendSequence
-	Rcv      ReceiveSequence
+	Snd      *SendSequence
+	Rcv      *ReceiveSequence
 	retrans  RetransmissionQueue
 	Window   []byte
 	Mutex    *sync.RWMutex
@@ -120,7 +121,7 @@ func (cb *ControlBlock) LAST_ACK() {
 	cb.State = LAST_ACK
 }
 
-func (cb *ControlBlock) HandleEvent(packet *TCPPacket) (*TCPPacket, error) {
+func (cb *ControlBlock) HandleEvent(packet *tcp.Packet) (*tcp.Packet, error) {
 	// implement based on rfc
 	// segment arrives
 	switch cb.State {
@@ -131,7 +132,7 @@ func (cb *ControlBlock) HandleEvent(packet *TCPPacket) (*TCPPacket, error) {
 		}
 		if packet.Header.OffsetControlFlag.ControlFlag().Ack() {
 			// <SEQ=SEG.ACK><CTL=RST>
-			return BuildTCPPacket(cb.HostPort, cb.PeerPort, packet.Header.Ack, 0, RST, windowZero, 0, nil)
+			return tcp.Build(cb.HostPort, cb.PeerPort, packet.Header.Ack, 0, tcp.RST, windowZero, 0, nil)
 		} else {
 			// <SEQ=0><ACK=SEG.SEQ+SEG.LEN><CTL=RST,ACK>
 			ack := packet.Header.Sequence
@@ -144,7 +145,7 @@ func (cb *ControlBlock) HandleEvent(packet *TCPPacket) (*TCPPacket, error) {
 			if packet.Header.OffsetControlFlag.ControlFlag().Fin() {
 				ack++
 			}
-			return BuildTCPPacket(cb.HostPort, cb.PeerPort, 0, ack, RST, windowZero, 0, nil)
+			return tcp.Build(cb.HostPort, cb.PeerPort, 0, ack, tcp.RST, windowZero, 0, nil)
 		}
 	// if the State is LISTEN
 	case LISTEN:
@@ -156,7 +157,7 @@ func (cb *ControlBlock) HandleEvent(packet *TCPPacket) (*TCPPacket, error) {
 		// second check ACK
 		if packet.Header.OffsetControlFlag.ControlFlag().Ack() {
 			// <SEQ=SEG.ACK><CTL=RST>
-			return BuildTCPPacket(cb.HostPort, cb.PeerPort, packet.Header.Ack, 0, RST, windowZero, 0, nil)
+			return tcp.Build(cb.HostPort, cb.PeerPort, packet.Header.Ack, 0, tcp.RST, windowZero, 0, nil)
 		}
 		// third check SYN
 		if packet.Header.OffsetControlFlag.ControlFlag().Syn() {
@@ -169,7 +170,7 @@ func (cb *ControlBlock) HandleEvent(packet *TCPPacket) (*TCPPacket, error) {
 			cb.Snd.UNA = cb.Snd.ISS
 			cb.State = SYN_RECVD
 			// <SEQ=ISS><ACK=RCV.NXT><CTL=SYN,ACK>
-			return BuildTCPPacket(cb.HostPort, cb.PeerPort, cb.Snd.ISS, cb.Rcv.NXT, SYN|ACK, windowZero, 0, nil)
+			return tcp.Build(cb.HostPort, cb.PeerPort, cb.Snd.ISS, cb.Rcv.NXT, tcp.SYN|tcp.ACK, windowZero, 0, nil)
 		}
 		// fourth other text or control
 		return nil, fmt.Errorf("invalid State")
@@ -179,7 +180,7 @@ func (cb *ControlBlock) HandleEvent(packet *TCPPacket) (*TCPPacket, error) {
 			if packet.Header.Ack <= cb.Snd.ISS || packet.Header.Ack > cb.Snd.NXT {
 				// <SEQ=SEG.ACK><CTL=RST>
 				if !packet.Header.OffsetControlFlag.ControlFlag().Rst() {
-					return BuildTCPPacket(cb.HostPort, cb.PeerPort, packet.Header.Ack, 0, RST, windowZero, 0, nil)
+					return tcp.Build(cb.HostPort, cb.PeerPort, packet.Header.Ack, 0, tcp.RST, windowZero, 0, nil)
 				}
 				return nil, fmt.Errorf("discard the segment")
 			}
@@ -203,13 +204,13 @@ func (cb *ControlBlock) HandleEvent(packet *TCPPacket) (*TCPPacket, error) {
 				if cb.Snd.ISS < cb.Snd.UNA {
 					// <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
 					cb.State = ESTABLISHED
-					return BuildTCPPacket(cb.HostPort, cb.PeerPort, cb.Snd.NXT, cb.Rcv.NXT, ACK, windowZero, 0, nil)
+					return tcp.Build(cb.HostPort, cb.PeerPort, cb.Snd.NXT, cb.Rcv.NXT, tcp.ACK, windowZero, 0, nil)
 					// TODO check sixth step
 				}
 			}
 			// <SEQ=ISS><ACK=RCV.NXT><CTL=SYN,ACK>
 			cb.State = SYN_RECVD
-			return BuildTCPPacket(cb.HostPort, cb.PeerPort, cb.Snd.ISS, cb.Rcv.NXT, SYN|ACK, windowZero, 0, nil)
+			return tcp.Build(cb.HostPort, cb.PeerPort, cb.Snd.ISS, cb.Rcv.NXT, tcp.SYN|tcp.ACK, windowZero, 0, nil)
 		}
 	}
 	if packet.Header.Sequence != cb.Rcv.NXT {
@@ -230,7 +231,7 @@ func (cb *ControlBlock) HandleEvent(packet *TCPPacket) (*TCPPacket, error) {
 			// queue push
 		} else {
 			// <SEQ=SEG.ACK><CTL=RST>
-			return BuildTCPPacket(cb.HostPort, cb.PeerPort, packet.Header.Ack, 0, RST, windowZero, 0, nil)
+			return tcp.Build(cb.HostPort, cb.PeerPort, packet.Header.Ack, 0, tcp.RST, windowZero, 0, nil)
 		}
 	}
 	switch cb.State {
@@ -242,7 +243,7 @@ func (cb *ControlBlock) HandleEvent(packet *TCPPacket) (*TCPPacket, error) {
 		if cb.Snd.UNA < packet.Header.Ack && packet.Header.Ack <= cb.Snd.NXT {
 			cb.Snd.UNA = packet.Header.Ack
 		} else if packet.Header.Ack > cb.Snd.NXT {
-			return BuildTCPPacket(cb.HostPort, cb.PeerPort, cb.Snd.NXT, cb.Rcv.NXT, ACK, windowZero, 0, nil)
+			return tcp.Build(cb.HostPort, cb.PeerPort, cb.Snd.NXT, cb.Rcv.NXT, tcp.ACK, windowZero, 0, nil)
 		}
 		// send window update
 		if cb.State == FIN_WAIT1 {
@@ -270,7 +271,7 @@ func (cb *ControlBlock) HandleEvent(packet *TCPPacket) (*TCPPacket, error) {
 			cb.Window = append(cb.Window, packet.Data...)
 			// cb.window <- packet.Data
 			// <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
-			return BuildTCPPacket(cb.HostPort, cb.PeerPort, cb.Snd.NXT, cb.Rcv.NXT, ACK, windowZero, 0, nil)
+			return tcp.Build(cb.HostPort, cb.PeerPort, cb.Snd.NXT, cb.Rcv.NXT, tcp.ACK, windowZero, 0, nil)
 			// pthread_cond_signal
 		}
 	}
@@ -288,7 +289,7 @@ func (cb *ControlBlock) HandleEvent(packet *TCPPacket) (*TCPPacket, error) {
 			// start time-wait timer
 			cb.State = TIME_WAIT
 		}
-		return BuildTCPPacket(cb.HostPort, cb.PeerPort, cb.Snd.NXT, cb.Rcv.NXT, ACK, windowZero, 0, nil)
+		return tcp.Build(cb.HostPort, cb.PeerPort, cb.Snd.NXT, cb.Rcv.NXT, tcp.ACK, windowZero, 0, nil)
 	}
 	return nil, fmt.Errorf("not matched any State")
 }
@@ -347,8 +348,8 @@ func NewControlBlock(hostAddr, peerAddr *ipv4.IPAddress, hostPort, peerPort uint
 	}
 }
 
-func newSnd() SendSequence {
-	return SendSequence{
+func newSnd() *SendSequence {
+	return &SendSequence{
 		UNA: 0,
 		NXT: 0,
 		WND: 0,
@@ -359,8 +360,8 @@ func newSnd() SendSequence {
 	}
 }
 
-func newRcv() ReceiveSequence {
-	return ReceiveSequence{
+func newRcv() *ReceiveSequence {
+	return &ReceiveSequence{
 		NXT: 0,
 		WND: 0,
 		UP:  0,
