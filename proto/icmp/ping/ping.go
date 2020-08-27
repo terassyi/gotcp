@@ -77,12 +77,12 @@ func (p *Ping) Start() error {
 
 func (p *Ping) start() error {
 
-	buf := make([]byte, 512)
 	defer p.ip.Eth.Close()
 
 	p.queue <- struct{}{}
 
 	for {
+		buf := make([]byte, 512)
 		_, err := p.ip.Eth.Recv(buf)
 		if err != nil {
 			return err

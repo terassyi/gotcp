@@ -1,5 +1,5 @@
 package util
 
-func HexDump(buf []byte) {
-
+func DisableOsTcpStack(port int) error {
+	return nil
 }

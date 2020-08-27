@@ -22,11 +22,12 @@ type Arp struct {
 }
 
 func New(table *Table) *Arp {
-	return &Arp{
+	ap := &Arp{
 		ProtocolBuffer: proto.NewProtocolBuffer(),
 		Table:          table,
 		Updated:        make(chan struct{}),
 	}
+	return ap
 }
 
 func (ap *Arp) SetAddr(name string) error {

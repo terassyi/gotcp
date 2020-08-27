@@ -1,5 +1,6 @@
 package util
 
+// should'nt use this
 func Checksum(data []byte, size int, init uint32) uint16 {
 	sum := init
 	for i := 0; i < size-1; i += 2 {

@@ -91,7 +91,7 @@ func (ip *Ipv4) manage(packet *ipv4.Packet) error {
 		ip.Icmp.Recv(packet.Data)
 	case ipv4.IPTCPProtocol:
 		//ip.Tcp.Recv(packet.Data)
-		go ip.Tcp.HandlePacket(packet.Data)
+		go ip.Tcp.HandlePacket(&packet.Header.Src, packet.Data)
 	default:
 		return fmt.Errorf("unsupported protocol")
 	}
@@ -116,6 +116,26 @@ func (ip *Ipv4) Send(dst ipv4.IPAddress, protocol ipv4.IPProtocol, data []byte) 
 	}
 
 	return len(ipByte), nil
+}
+
+// this function will be called as goroutine
+func (ip *Ipv4) TcpSend() {
+	for {
+		addrPacket, ok := <-ip.Tcp.SendQueue
+		if !ok {
+			fmt.Println("failed to handle tcp packet for sending")
+		}
+		addrPacket.Packet.Show()
+		data, err := addrPacket.Packet.Serialize()
+		if err != nil {
+			fmt.Println(err)
+		}
+		l, err := ip.Send(*addrPacket.Address, ipv4.IPTCPProtocol, data)
+		if err != nil {
+			fmt.Println(err)
+		}
+		fmt.Printf("[info] %dbytes tcp packet sent\n", l)
+	}
 }
 
 func siocgifaddr(name string) ([]byte, error) {

@@ -1,7 +1,7 @@
 package tcp
 
 import (
-	"github.com/terassyi/gotcp/proto/tcp"
+	"encoding/binary"
 	"testing"
 )
 
@@ -20,7 +20,18 @@ func TestNew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if packet.Header.OffsetControlFlag.ControlFlag() != tcp.SYN {
+	if packet.Header.OffsetControlFlag.ControlFlag() != SYN {
 		t.Fatalf("actual: %v", packet.Header.OffsetControlFlag.ControlFlag().String())
+	}
+}
+
+func TestNewOffsetControlFlag(t *testing.T) {
+	oc := newOffsetControlFlag(uint8(40), SYN)
+	wanted := binary.BigEndian.Uint16([]byte{0xa0, 0x02})
+	if wanted != uint16(oc) {
+		t.Fatalf("actual: %b wanted: %b", oc, wanted)
+	}
+	if oc.Offset() != 40 {
+		t.Fatalf("actual: %b wanted: %b", oc.Offset(), 40)
 	}
 }

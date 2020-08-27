@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"github.com/terassyi/gotcp/util"
 	"strings"
 )
 
@@ -36,7 +37,7 @@ type ControlFlag uint8
 // type Option []byte
 
 func newOffsetControlFlag(offset uint8, flag ControlFlag) OffsetControlFlag {
-	return OffsetControlFlag(uint16(offset)<<8 | uint16(flag))
+	return OffsetControlFlag(uint16(offset/4)<<12 | uint16(flag))
 }
 
 func (of OffsetControlFlag) Offset() int {
@@ -156,6 +157,17 @@ func (tp *Packet) Serialize() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+func (tp *Packet) ReCalculateChecksum() error {
+	tp.Header.Checksum = uint16(0)
+	buf, err := tp.Serialize()
+	if err != nil {
+		return err
+	}
+	sum := util.Checksum2(buf, len(buf), 0)
+	tp.Header.Checksum = sum
+	return nil
+}
+
 func Build(src, dst uint16, seq, ack uint32, flag ControlFlag, window, urgent uint16, data []byte) (*Packet, error) {
 	header := &Header{
 		SourcePort:      src,
@@ -172,6 +184,9 @@ func Build(src, dst uint16, seq, ack uint32, flag ControlFlag, window, urgent ui
 	packet := &Packet{
 		Header: *header,
 		Data:   data,
+	}
+	if err := packet.ReCalculateChecksum(); err != nil {
+		return nil, err
 	}
 	return packet, nil
 }

@@ -2,25 +2,22 @@ package tcp
 
 import (
 	"fmt"
-	"github.com/terassyi/gotcp/packet/ipv4"
 	"github.com/terassyi/gotcp/packet/tcp"
+	"github.com/terassyi/gotcp/proto/port"
 	"math/rand"
 	"sync"
 	"time"
 )
 
 // reimplementation of https://github.com/pandax381/microps/blob/master/tcp.c
-type ControlBlock struct {
-	HostAddr *ipv4.IPAddress
-	HostPort uint16
-	PeerAddr *ipv4.IPAddress
-	PeerPort uint16
-	State    state
-	Snd      *SendSequence
-	Rcv      *ReceiveSequence
-	retrans  RetransmissionQueue
-	Window   []byte
-	Mutex    *sync.RWMutex
+type controlBlock struct {
+	peer    *port.Peer
+	state   state
+	Snd     *SendSequence
+	Rcv     *ReceiveSequence
+	retrans RetransmissionQueue
+	Window  []byte
+	Mutex   *sync.RWMutex
 }
 
 // type CbTable []*ControlBlock
@@ -77,54 +74,80 @@ func (s state) String() string {
 	}
 }
 
-func (cb *ControlBlock) CLOSED() {
-	cb.State = CLOSED
+func (cb *controlBlock) CLOSED() {
+	cb.state = CLOSED
 }
 
-func (cb *ControlBlock) LISTEN() {
-	cb.State = LISTEN
+func (cb *controlBlock) LISTEN() {
+	cb.state = LISTEN
 }
 
-func (cb *ControlBlock) SYN_SENT() {
-	cb.State = SYN_SENT
+func (cb *controlBlock) SYN_SENT() {
+	cb.state = SYN_SENT
 }
 
-func (cb *ControlBlock) SYN_RECVD() {
-	cb.State = SYN_RECVD
+func (cb *controlBlock) SYN_RECVD() {
+	cb.state = SYN_RECVD
 }
 
-func (cb *ControlBlock) ESTABLISHED() {
-	cb.State = ESTABLISHED
+func (cb *controlBlock) ESTABLISHED() {
+	cb.state = ESTABLISHED
 }
 
-func (cb *ControlBlock) FIN_WAIT1() {
-	cb.State = FIN_WAIT1
+func (cb *controlBlock) FIN_WAIT1() {
+	cb.state = FIN_WAIT1
 }
 
-func (cb *ControlBlock) FIN_WAIT2() {
-	cb.State = FIN_WAIT2
+func (cb *controlBlock) FIN_WAIT2() {
+	cb.state = FIN_WAIT2
 }
 
-func (cb *ControlBlock) CLOSING() {
-	cb.State = CLOSING
+func (cb *controlBlock) CLOSING() {
+	cb.state = CLOSING
 }
 
-func (cb *ControlBlock) TIME_WAIT() {
-	cb.State = TIME_WAIT
+func (cb *controlBlock) TIME_WAIT() {
+	cb.state = TIME_WAIT
 }
 
-func (cb *ControlBlock) CLOSE_WAIT() {
-	cb.State = CLOSE_WAIT
+func (cb *controlBlock) CLOSE_WAIT() {
+	cb.state = CLOSE_WAIT
 }
 
-func (cb *ControlBlock) LAST_ACK() {
-	cb.State = LAST_ACK
+func (cb *controlBlock) LAST_ACK() {
+	cb.state = LAST_ACK
 }
 
-func (cb *ControlBlock) HandleEvent(packet *tcp.Packet) (*tcp.Packet, error) {
+func (cb *controlBlock) activeOpen() (*tcp.Packet, error) {
+	// client
+	// send syn
+	// move to SYN_SENT
+	if cb.state != CLOSED {
+		return nil, fmt.Errorf("invalid state: %v", cb.state.String())
+	}
+	packet, err := tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), 0, 0, tcp.SYN, 0, 0, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	cb.SYN_SENT()
+	return packet, nil
+}
+
+func (cb *controlBlock) passiveOpen() error {
+	// server
+	// move to LISTEN
+	if cb.state != CLOSED {
+		return fmt.Errorf("invalid state: %v", cb.state.String())
+	}
+	cb.LISTEN()
+	return nil
+}
+
+func (cb *controlBlock) HandleEvent(packet *tcp.Packet) (*tcp.Packet, error) {
 	// implement based on rfc
 	// segment arrives
-	switch cb.State {
+	switch cb.state {
 	//if the State is CLOSED
 	case CLOSED:
 		if packet.Header.OffsetControlFlag.ControlFlag().Rst() {
@@ -132,7 +155,7 @@ func (cb *ControlBlock) HandleEvent(packet *tcp.Packet) (*tcp.Packet, error) {
 		}
 		if packet.Header.OffsetControlFlag.ControlFlag().Ack() {
 			// <SEQ=SEG.ACK><CTL=RST>
-			return tcp.Build(cb.HostPort, cb.PeerPort, packet.Header.Ack, 0, tcp.RST, windowZero, 0, nil)
+			return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), packet.Header.Ack, 0, tcp.RST, windowZero, 0, nil)
 		} else {
 			// <SEQ=0><ACK=SEG.SEQ+SEG.LEN><CTL=RST,ACK>
 			ack := packet.Header.Sequence
@@ -145,7 +168,7 @@ func (cb *ControlBlock) HandleEvent(packet *tcp.Packet) (*tcp.Packet, error) {
 			if packet.Header.OffsetControlFlag.ControlFlag().Fin() {
 				ack++
 			}
-			return tcp.Build(cb.HostPort, cb.PeerPort, 0, ack, tcp.RST, windowZero, 0, nil)
+			return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), 0, ack, tcp.RST, windowZero, 0, nil)
 		}
 	// if the State is LISTEN
 	case LISTEN:
@@ -157,7 +180,7 @@ func (cb *ControlBlock) HandleEvent(packet *tcp.Packet) (*tcp.Packet, error) {
 		// second check ACK
 		if packet.Header.OffsetControlFlag.ControlFlag().Ack() {
 			// <SEQ=SEG.ACK><CTL=RST>
-			return tcp.Build(cb.HostPort, cb.PeerPort, packet.Header.Ack, 0, tcp.RST, windowZero, 0, nil)
+			return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), packet.Header.Ack, 0, tcp.RST, windowZero, 0, nil)
 		}
 		// third check SYN
 		if packet.Header.OffsetControlFlag.ControlFlag().Syn() {
@@ -168,9 +191,9 @@ func (cb *ControlBlock) HandleEvent(packet *tcp.Packet) (*tcp.Packet, error) {
 			cb.Snd.ISS = Random()
 			cb.Snd.NXT = cb.Snd.ISS + 1
 			cb.Snd.UNA = cb.Snd.ISS
-			cb.State = SYN_RECVD
+			cb.state = SYN_RECVD
 			// <SEQ=ISS><ACK=RCV.NXT><CTL=SYN,ACK>
-			return tcp.Build(cb.HostPort, cb.PeerPort, cb.Snd.ISS, cb.Rcv.NXT, tcp.SYN|tcp.ACK, windowZero, 0, nil)
+			return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), cb.Snd.ISS, cb.Rcv.NXT, tcp.SYN|tcp.ACK, windowZero, 0, nil)
 		}
 		// fourth other text or control
 		return nil, fmt.Errorf("invalid State")
@@ -180,7 +203,7 @@ func (cb *ControlBlock) HandleEvent(packet *tcp.Packet) (*tcp.Packet, error) {
 			if packet.Header.Ack <= cb.Snd.ISS || packet.Header.Ack > cb.Snd.NXT {
 				// <SEQ=SEG.ACK><CTL=RST>
 				if !packet.Header.OffsetControlFlag.ControlFlag().Rst() {
-					return tcp.Build(cb.HostPort, cb.PeerPort, packet.Header.Ack, 0, tcp.RST, windowZero, 0, nil)
+					return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), packet.Header.Ack, 0, tcp.RST, windowZero, 0, nil)
 				}
 				return nil, fmt.Errorf("discard the segment")
 			}
@@ -203,14 +226,14 @@ func (cb *ControlBlock) HandleEvent(packet *tcp.Packet) (*tcp.Packet, error) {
 				// TODO delete retransmission queue
 				if cb.Snd.ISS < cb.Snd.UNA {
 					// <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
-					cb.State = ESTABLISHED
-					return tcp.Build(cb.HostPort, cb.PeerPort, cb.Snd.NXT, cb.Rcv.NXT, tcp.ACK, windowZero, 0, nil)
+					cb.state = ESTABLISHED
+					return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), cb.Snd.NXT, cb.Rcv.NXT, tcp.ACK, windowZero, 0, nil)
 					// TODO check sixth step
 				}
 			}
 			// <SEQ=ISS><ACK=RCV.NXT><CTL=SYN,ACK>
-			cb.State = SYN_RECVD
-			return tcp.Build(cb.HostPort, cb.PeerPort, cb.Snd.ISS, cb.Rcv.NXT, tcp.SYN|tcp.ACK, windowZero, 0, nil)
+			cb.state = SYN_RECVD
+			return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), cb.Snd.ISS, cb.Rcv.NXT, tcp.SYN|tcp.ACK, windowZero, 0, nil)
 		}
 	}
 	if packet.Header.Sequence != cb.Rcv.NXT {
@@ -224,37 +247,37 @@ func (cb *ControlBlock) HandleEvent(packet *tcp.Packet) (*tcp.Packet, error) {
 		return nil, fmt.Errorf("ack flag is not set")
 	}
 	// if ack flag is set
-	switch cb.State {
+	switch cb.state {
 	case SYN_RECVD:
 		if cb.Snd.UNA <= packet.Header.Ack && packet.Header.Ack <= cb.Snd.NXT {
-			cb.State = ESTABLISHED
+			cb.state = ESTABLISHED
 			// queue push
 		} else {
 			// <SEQ=SEG.ACK><CTL=RST>
-			return tcp.Build(cb.HostPort, cb.PeerPort, packet.Header.Ack, 0, tcp.RST, windowZero, 0, nil)
+			return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), packet.Header.Ack, 0, tcp.RST, windowZero, 0, nil)
 		}
 	}
-	switch cb.State {
+	switch cb.state {
 	case LAST_ACK:
-		cb.State = CLOSED
+		cb.state = CLOSED
 		// pthread_cond_signal
 	default:
 		// ESTABLISHED, FIN_WAIT1, FIN_WAIT2, CLOSE_WAIT, CLOSING
 		if cb.Snd.UNA < packet.Header.Ack && packet.Header.Ack <= cb.Snd.NXT {
 			cb.Snd.UNA = packet.Header.Ack
 		} else if packet.Header.Ack > cb.Snd.NXT {
-			return tcp.Build(cb.HostPort, cb.PeerPort, cb.Snd.NXT, cb.Rcv.NXT, tcp.ACK, windowZero, 0, nil)
+			return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), cb.Snd.NXT, cb.Rcv.NXT, tcp.ACK, windowZero, 0, nil)
 		}
 		// send window update
-		if cb.State == FIN_WAIT1 {
-			cb.State = FIN_WAIT2
+		if cb.state == FIN_WAIT1 {
+			cb.state = FIN_WAIT2
 		}
-		if cb.State == FIN_WAIT2 {
+		if cb.state == FIN_WAIT2 {
 			// if retransmission queue is empty, tcp can close
 		}
-		if cb.State == CLOSING {
+		if cb.state == CLOSING {
 			if packet.Header.Ack == cb.Snd.NXT {
-				cb.State = TIME_WAIT
+				cb.state = TIME_WAIT
 				// pthread_cond_signal
 			}
 			return nil, nil
@@ -263,7 +286,7 @@ func (cb *ControlBlock) HandleEvent(packet *tcp.Packet) (*tcp.Packet, error) {
 	// TODO sixth check URG
 	// seventh process the segment text
 	if packet.Data != nil {
-		switch cb.State {
+		switch cb.state {
 		case ESTABLISHED, FIN_WAIT1, FIN_WAIT2:
 			// handle data
 			cb.Rcv.NXT = packet.Header.Sequence + uint32(len(packet.Data))
@@ -271,25 +294,25 @@ func (cb *ControlBlock) HandleEvent(packet *tcp.Packet) (*tcp.Packet, error) {
 			cb.Window = append(cb.Window, packet.Data...)
 			// cb.window <- packet.Data
 			// <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
-			return tcp.Build(cb.HostPort, cb.PeerPort, cb.Snd.NXT, cb.Rcv.NXT, tcp.ACK, windowZero, 0, nil)
+			return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), cb.Snd.NXT, cb.Rcv.NXT, tcp.ACK, windowZero, 0, nil)
 			// pthread_cond_signal
 		}
 	}
 	// eighth check FIN
 	if packet.Header.OffsetControlFlag.ControlFlag().Fin() {
 		cb.Rcv.NXT++
-		switch cb.State {
+		switch cb.state {
 		case ESTABLISHED, SYN_RECVD:
-			cb.State = CLOSE_WAIT
+			cb.state = CLOSE_WAIT
 			// pthread_cond_signal
 		case FIN_WAIT1:
 			// start time-wait timer and stop other timers
-			cb.State = TIME_WAIT
+			cb.state = TIME_WAIT
 		case FIN_WAIT2:
 			// start time-wait timer
-			cb.State = TIME_WAIT
+			cb.state = TIME_WAIT
 		}
-		return tcp.Build(cb.HostPort, cb.PeerPort, cb.Snd.NXT, cb.Rcv.NXT, tcp.ACK, windowZero, 0, nil)
+		return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), cb.Snd.NXT, cb.Rcv.NXT, tcp.ACK, windowZero, 0, nil)
 	}
 	return nil, fmt.Errorf("not matched any State")
 }
@@ -299,8 +322,8 @@ func Random() uint32 {
 	return rand.Uint32()
 }
 
-func (cb *ControlBlock) IsReadyRecv() bool {
-	switch cb.State {
+func (cb *controlBlock) IsReadyRecv() bool {
+	switch cb.state {
 	case ESTABLISHED:
 		return true
 	case FIN_WAIT1:
@@ -312,8 +335,8 @@ func (cb *ControlBlock) IsReadyRecv() bool {
 	}
 }
 
-func (cb *ControlBlock) IsReadySend() bool {
-	switch cb.State {
+func (cb *controlBlock) IsReadySend() bool {
+	switch cb.state {
 	case ESTABLISHED:
 		return true
 	case CLOSE_WAIT:
@@ -335,16 +358,13 @@ func (cb *ControlBlock) IsReadySend() bool {
 //	return buf
 //}
 
-func NewControlBlock(hostAddr, peerAddr *ipv4.IPAddress, hostPort, peerPort uint16) *ControlBlock {
-	return &ControlBlock{
-		HostAddr: hostAddr,
-		HostPort: hostPort,
-		PeerAddr: peerAddr,
-		PeerPort: peerPort,
-		State:    CLOSED,
-		Snd:      newSnd(),
-		Rcv:      newRcv(),
-		Window:   make([]byte, 0, 65535),
+func NewControlBlock(peer *port.Peer) *controlBlock {
+	return &controlBlock{
+		peer:   peer,
+		state:  CLOSED,
+		Snd:    newSnd(),
+		Rcv:    newRcv(),
+		Window: make([]byte, 0, 65535),
 	}
 }
 
