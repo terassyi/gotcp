@@ -8,3 +8,13 @@ const (
 	ACK ControlFlag = 0x10 // 010000
 	URG ControlFlag = 0x20 // 100000
 )
+
+const (
+	End OptionKind = 0
+	Nop OptionKind = 1
+	MSS OptionKind = 2
+	WS  OptionKind = 3
+	SP  OptionKind = 4
+	SCK OptionKind = 5
+	TS  OptionKind = 8
+)

@@ -15,6 +15,7 @@ import (
 )
 
 type DumpCommand struct {
+	Iface string
 }
 
 func (d *DumpCommand) Name() string {
@@ -26,16 +27,16 @@ func (d *DumpCommand) Synopsis() string {
 }
 
 func (d *DumpCommand) Usage() string {
-	return `gotcp dump:
+	return `gotcp dump -i <interface name>:
 	dump packets received by the interface`
 }
 
 func (d *DumpCommand) SetFlags(f *flag.FlagSet) {
-	// nop
+	f.StringVar(&d.Iface, "i", "", "interface")
 }
 
 func (d *DumpCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
-	iface, err := interfaces.New("host1_veth0", "afpacket")
+	iface, err := interfaces.New(d.Iface, "afpacket")
 	if err != nil {
 		panic(err)
 	}

@@ -26,12 +26,12 @@ type Ping struct {
 	queue    chan struct{}
 }
 
-func New(dst string) (*Ping, error) {
+func New(name, dst string) (*Ping, error) {
 	addr, err := ippacket.StringToIPAddress(dst)
 	if err != nil {
 		return nil, err
 	}
-	iface, err := interfaces.New("host1_veth0", "afpacket")
+	iface, err := interfaces.New(name, "afpacket")
 	if err != nil {
 		return nil, err
 	}

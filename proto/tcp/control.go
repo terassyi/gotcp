@@ -125,11 +125,16 @@ func (cb *controlBlock) activeOpen() (*tcp.Packet, error) {
 	if cb.state != CLOSED {
 		return nil, fmt.Errorf("invalid state: %v", cb.state.String())
 	}
-	packet, err := tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), 0, 0, tcp.SYN, 0, 0, nil)
+	packet, err := tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), 0, 0, tcp.SYN, 29200, 0, nil)
 	if err != nil {
 		return nil, err
 	}
-
+	// add option
+	t, err := tcp.NewTimeStamp()
+	if err != nil {
+		return nil, err
+	}
+	packet.AddOption(tcp.Options{tcp.MaxSegmentSize(1460), tcp.SACKPermitted{}, tcp.WindowScale(7), *t})
 	cb.SYN_SENT()
 	return packet, nil
 }

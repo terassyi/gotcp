@@ -1,6 +1,7 @@
 package ipv4
 
 import (
+	"encoding/hex"
 	"fmt"
 	etherframe "github.com/terassyi/gotcp/packet/ethernet"
 	"github.com/terassyi/gotcp/packet/ipv4"
@@ -130,6 +131,7 @@ func (ip *Ipv4) TcpSend() {
 		if err != nil {
 			fmt.Println(err)
 		}
+		hex.Dump(data)
 		l, err := ip.Send(*addrPacket.Address, ipv4.IPTCPProtocol, data)
 		if err != nil {
 			fmt.Println(err)

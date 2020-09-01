@@ -9,7 +9,8 @@ import (
 )
 
 type PingCommand struct {
-	Dst string
+	Iface string
+	Dst   string
 }
 
 func (p *PingCommand) Name() string {
@@ -21,17 +22,18 @@ func (p *PingCommand) Synopsis() string {
 }
 
 func (p *PingCommand) Usage() string {
-	return `goctp ping:
+	return `goctp ping -i <interface name> -dest <destination address>:
 	send icmp echo request packets and receive reply packets`
 }
 
 func (p *PingCommand) SetFlags(f *flag.FlagSet) {
+	f.StringVar(&p.Iface, "i", "", "interface")
 	f.StringVar(&p.Dst, "dest", "", "destination address")
 	// nop
 }
 
 func (p *PingCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
-	pin, err := ping.New(p.Dst)
+	pin, err := ping.New(p.Iface, p.Dst)
 	fmt.Println(p.Dst)
 	if err != nil {
 		fmt.Println(err)

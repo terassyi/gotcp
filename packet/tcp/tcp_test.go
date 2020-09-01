@@ -5,6 +5,20 @@ import (
 	"testing"
 )
 
+var syn_packet_data = []byte{
+	0xe7, 0x1a, 0x1f, 0x40, 0x1e, 0xb5, 0x93, 0xdc,
+	0x00, 0x00, 0x00, 0x00, 0xa0, 0x02, 0x72, 0x10,
+	0x81, 0x84, 0x00, 0x00, 0x02, 0x04, 0x05, 0xb4,
+	0x04, 0x02, 0x08, 0x0a, 0x17, 0x4b, 0x06, 0xf5,
+	0x00, 0x00, 0x00, 0x00, 0x01, 0x03, 0x03, 0x07,
+}
+
+var syn_packet_data_no_option = []byte{
+	0xe7, 0x1a, 0x1f, 0x40, 0x1e, 0xb5, 0x93, 0xdc,
+	0x00, 0x00, 0x00, 0x00, 0x50, 0x02, 0x72, 0x10,
+	0x81, 0x84, 0x00, 0x00,
+}
+
 func TestNew(t *testing.T) {
 	//data := []byte{
 	//	0xdc,0xe4,0x00,0x17,0x8f,0x9d,
@@ -15,13 +29,15 @@ func TestNew(t *testing.T) {
 	//	0x03,0x07,
 	//	}
 
-	data := []byte{0, 23, 220, 234, 0, 0, 0, 0, 202, 42, 25, 13, 80, 20, 0, 0, 110, 65, 0, 0, 2, 4, 5, 180, 4, 2, 8, 10, 253, 191, 26, 95, 0, 0, 0, 0, 1, 3, 3, 7}
-	packet, err := New(data)
+	packet, err := New(syn_packet_data)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if packet.Header.OffsetControlFlag.ControlFlag() != SYN {
 		t.Fatalf("actual: %v", packet.Header.OffsetControlFlag.ControlFlag().String())
+	}
+	if packet.Header.OffsetControlFlag.Offset() != 40 {
+		t.Fatalf("actual offset: %v", packet.Header.OffsetControlFlag.Offset())
 	}
 }
 
@@ -33,5 +49,18 @@ func TestNewOffsetControlFlag(t *testing.T) {
 	}
 	if oc.Offset() != 40 {
 		t.Fatalf("actual: %b wanted: %b", oc.Offset(), 40)
+	}
+}
+
+func TestAddOption(t *testing.T) {
+	packet, err := New(syn_packet_data_no_option)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packet.Show()
+	packet.AddOption(Options{MaxSegmentSize(1460), WindowScale(7)})
+	packet.Show()
+	if packet.Header.OffsetControlFlag.Offset() != 28 {
+		t.Fatalf("actual offset value: %d", packet.Header.OffsetControlFlag.Offset())
 	}
 }

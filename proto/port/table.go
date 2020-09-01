@@ -3,6 +3,7 @@ package port
 import (
 	"fmt"
 	"github.com/terassyi/gotcp/packet/ipv4"
+	"github.com/terassyi/gotcp/util"
 	"sync"
 )
 
@@ -26,7 +27,7 @@ func NewPeer(addr *ipv4.IPAddress, peerport, myport int) *Peer {
 }
 
 const (
-	MIN_PORT_RANGE int = 40000
+	MIN_PORT_RANGE int = 49152
 	MAX_PORT_RANGE int = 65535
 )
 
@@ -59,6 +60,11 @@ func (t *Table) Add(addr *ipv4.IPAddress, peerport, srcport int) (*Peer, error) 
 		Port:     port,
 	}
 	t.Entry = append(t.Entry, peer)
+
+	// disable os tcp handle
+	if err := util.DisableOsTcpStack(port); err != nil {
+		return nil, err
+	}
 	return peer, nil
 }
 
@@ -118,6 +124,31 @@ func (t *Table) searchBySrcPort(srcport int) (int, bool) {
 		}
 	}
 	return 0, false
+}
+
+func (t *Table) Bind(port int) (*Peer, error) {
+	_, ok := t.searchBySrcPort(port)
+	if ok {
+		return nil, fmt.Errorf("port %d is already in use.", port)
+	}
+	//peer := &Peer{
+	//	PeerAddr: nil,
+	//	PeerPort: 0,
+	//	Port:     port,
+	//}
+	return t.Add(nil, 0, port)
+}
+
+func (t *Table) IsBinded(port int) bool {
+	index, ok := t.searchBySrcPort(port)
+	if !ok {
+		return ok
+	}
+	p := t.Entry[index]
+	if p.PeerPort == 0 && p.PeerAddr == nil {
+		return true
+	}
+	return false
 }
 
 func (t *Table) getAvailablePort(peeraddr *ipv4.IPAddress, peerport int) (int, error) {

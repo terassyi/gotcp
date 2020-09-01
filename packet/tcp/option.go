@@ -1,18 +1,55 @@
 package tcp
 
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"time"
+)
+
 type OptionKind uint8
 
 type Option interface {
 	Kind() OptionKind
-	Length() uint8
+	Length() int
 	Data() []byte
 	Byte() []byte
 }
 
 type Options []Option
 
-func NewOptions(data []byte) Options {
-
+func OptionsFromByte(data []byte) (Options, error) {
+	var ops Options
+	for i := 0; i < len(data); i++ {
+		//fmt.Println(i)
+		switch OptionKind(data[i]) {
+		case End:
+			ops = append(ops, EndOfOptionList{})
+		case Nop:
+			ops = append(ops, NoOperation{})
+		case MSS:
+			mss := (data[i+2] << 8) + data[i+3]
+			ops = append(ops, MaxSegmentSize(uint16(mss)))
+			i += 3
+		case WS:
+			ops = append(ops, WindowScale(data[i+2]))
+			i += 2
+		case SP:
+			ops = append(ops, SACKPermitted{})
+			i += 1
+		case SCK:
+			l := data[i+1]
+			d := data[i+2 : l-2]
+			ops = append(ops, SACK(d))
+			i += int(l) - 1
+		case TS:
+			ops = append(ops, TimeStamp(data[i+2:i+10]))
+			i += 9
+		default:
+			return ops, fmt.Errorf("unknown tcp option type")
+		}
+	}
+	return ops, nil
 }
 
 func (op Options) Byte() []byte {
@@ -148,4 +185,15 @@ func (t TimeStamp) Data() []byte {
 
 func (t TimeStamp) Byte() []byte {
 	return append([]byte{byte(8), byte(10)}, t.Data()...)
+}
+
+func NewTimeStamp() (*TimeStamp, error) {
+	now := uint32(time.Now().Unix())
+	tsval := bytes.NewBuffer(make([]byte, 0))
+	tsecr := make([]byte, 4)
+	if err := binary.Write(tsval, binary.BigEndian, now); err != nil {
+		return nil, err
+	}
+	t := TimeStamp(append(tsval.Bytes(), tsecr...))
+	return &t, nil
 }

@@ -14,33 +14,31 @@ import (
 	"github.com/terassyi/gotcp/proto/tcp"
 )
 
-type TcpClientCommand struct {
+type TcpServerCommand struct {
 	Iface string
-	Addr  string
 	Port  int
 }
 
-func (c *TcpClientCommand) Name() string {
-	return "tcpclient"
+func (*TcpServerCommand) Name() string {
+	return "tcpserver"
 }
 
-func (c *TcpClientCommand) Synopsis() string {
-	return "tcp client"
+func (*TcpServerCommand) Synopsis() string {
+	return "tcp server"
 }
 
-func (c *TcpClientCommand) Usage() string {
-	return `gotcp tcpclient -i <interface name> -addr <ip address> -port <port>
-	tcp client to destination host`
+func (*TcpServerCommand) Usage() string {
+	return `gotcp tcpserver -i <interface name> -port <port>
+	tcp server binding port`
 }
 
-func (c *TcpClientCommand) SetFlags(f *flag.FlagSet) {
-	f.StringVar(&c.Iface, "i", "", "interface name")
-	f.StringVar(&c.Addr, "addr", "", "destination host address")
-	f.IntVar(&c.Port, "port", 0, "destination host port")
+func (s *TcpServerCommand) SetFlags(f *flag.FlagSet) {
+	f.StringVar(&s.Iface, "i", "", "interface")
+	f.IntVar(&s.Port, "port", 0, "binding port")
 }
 
-func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
-	iface, err := interfaces.New(c.Iface, "afpacket")
+func (s *TcpServerCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
+	iface, err := interfaces.New(s.Iface, "afpacket")
 	if err != nil {
 		panic(err)
 	}
@@ -95,14 +93,18 @@ func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 		}
 	}()
 
-	// tcp client
-
-	// disable os stack tcp handling
-	conn, err := ip.Tcp.Dial(c.Addr, c.Port)
+	// tcp server
+	listener, err := tcpProtocol.Listen("0.0.0.0", s.Port)
 	if err != nil {
-		fmt.Printf("[error] %s", err)
+		fmt.Printf("[error] %v", err)
 		return subcommands.ExitFailure
 	}
+	conn, err := listener.Accept()
+	if err != nil {
+		fmt.Printf("[error] %v", err)
+		return subcommands.ExitFailure
+	}
+
 	fmt.Println(conn)
 
 	return subcommands.ExitSuccess

@@ -11,6 +11,7 @@ import (
 type Tcp struct {
 	*proto.ProtocolBuffer
 	SendQueue chan AddressedPacket
+	SynQueue  chan AddressedPacket
 	Table     *port.Table
 }
 
@@ -67,4 +68,5 @@ func (t *Tcp) HandlePacket(src *ipv4.IPAddress, buf []byte) {
 		return
 	}
 	packet.Show()
+
 }
