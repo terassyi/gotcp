@@ -46,7 +46,7 @@ func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 	}
 
 	arpProtocol := arp.New(arp.NewTable())
-	if err := arpProtocol.SetAddr("host1_veth0"); err != nil {
+	if err := arpProtocol.SetAddr(c.Iface); err != nil {
 		fmt.Println(err)
 		return subcommands.ExitFailure
 	}

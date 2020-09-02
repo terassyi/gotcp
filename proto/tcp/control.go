@@ -136,6 +136,7 @@ func (cb *controlBlock) activeOpen() (*tcp.Packet, error) {
 	}
 	packet.AddOption(tcp.Options{tcp.MaxSegmentSize(1460), tcp.SACKPermitted{}, tcp.WindowScale(7), *t})
 	cb.SYN_SENT()
+	fmt.Println("[info] transmission control block state is SYN_SENT")
 	return packet, nil
 }
 
@@ -146,6 +147,7 @@ func (cb *controlBlock) passiveOpen() error {
 		return fmt.Errorf("invalid state: %v", cb.state.String())
 	}
 	cb.LISTEN()
+	fmt.Println("[info] transmission control block state is LISTEN")
 	return nil
 }
 
@@ -196,7 +198,8 @@ func (cb *controlBlock) HandleEvent(packet *tcp.Packet) (*tcp.Packet, error) {
 			cb.Snd.ISS = Random()
 			cb.Snd.NXT = cb.Snd.ISS + 1
 			cb.Snd.UNA = cb.Snd.ISS
-			cb.state = SYN_RECVD
+			cb.SYN_RECVD()
+			fmt.Println("[info] transmission control block state is SYN_RECVD")
 			// <SEQ=ISS><ACK=RCV.NXT><CTL=SYN,ACK>
 			return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), cb.Snd.ISS, cb.Rcv.NXT, tcp.SYN|tcp.ACK, windowZero, 0, nil)
 		}

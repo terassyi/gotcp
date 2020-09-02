@@ -61,12 +61,12 @@ func openPFPacket(name string) (int, error) {
 	protocol := hton16(syscall.ETH_P_ALL)
 	fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(protocol))
 	if err != nil {
-		return -1, err
+		return -1, fmt.Errorf("socket open error %v", err)
 	}
 	index, err := siocgifindex(name)
 	if err != nil {
 		syscall.Close(fd)
-		return -1, err
+		return -1, fmt.Errorf("siogifindex error: %v", err)
 	}
 	addr := &syscall.SockaddrLinklayer{
 		Protocol: protocol,
@@ -79,12 +79,12 @@ func openPFPacket(name string) (int, error) {
 	flags, err := siocgifflags(name)
 	if err != nil {
 		syscall.Close(fd)
-		return -1, nil
+		return -1, fmt.Errorf("siocgifflags error: %v", err)
 	}
 	flags |= syscall.IFF_PROMISC
 	if err := siocsifflags(name, flags); err != nil {
 		syscall.Close(fd)
-		return -1, nil
+		return -1, fmt.Errorf("siocsifflags error: %v", err)
 	}
 	return fd, nil
 }

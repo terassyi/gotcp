@@ -37,3 +37,16 @@ func TestNewTimeStamp(t *testing.T) {
 		t.Fatalf("actual: %d", len(ts.Byte()))
 	}
 }
+
+func TestTimeStamp_Exchange(t *testing.T) {
+	ts, err := NewTimeStamp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ex := ts.Exchange()
+	b := ts.Data()
+	fmt.Println(ex.Byte())
+	if ex[0] != b[4] {
+		t.Fatalf("base: %v :: exchanged: %v", ts.Data(), ex.Data())
+	}
+}

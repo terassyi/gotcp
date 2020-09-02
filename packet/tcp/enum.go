@@ -7,6 +7,8 @@ const (
 	PSH ControlFlag = 0x08 // 001000
 	ACK ControlFlag = 0x10 // 010000
 	URG ControlFlag = 0x20 // 100000
+	ECN ControlFlag = 0x40 // 1000000
+	CWR ControlFlag = 0x80 // 10000000
 )
 
 const (

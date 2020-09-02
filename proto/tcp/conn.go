@@ -7,7 +7,17 @@ import (
 
 type Conn struct {
 	*controlBlock
-	Peer *port.Table
+	Peer  *port.Peer
+	queue chan AddressedPacket
+	inner *Tcp
+}
+
+func newConn(peer *port.Peer) (*Conn, error) {
+	return &Conn{
+		controlBlock: NewControlBlock(peer),
+		Peer:         peer,
+		queue:        make(chan AddressedPacket, 100),
+	}, nil
 }
 
 func (t *Tcp) Dial(addr string, peerport int) (*Conn, error) {
@@ -23,12 +33,23 @@ func (t *Tcp) doDial(addr string, peerport int) (*Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	cb := NewControlBlock(peer)
-
-	p, err := cb.activeOpen()
+	conn, err := newConn(peer)
 	if err != nil {
 		return nil, err
 	}
-	t.enqueue(peerAddr, p)
+	conn.establish()
 	return nil, nil
+}
+
+func (conn *Conn) establish() error {
+	// tcp active open
+	p, err := conn.activeOpen()
+	if err != nil {
+		return err
+	}
+	// send syn
+	conn.inner.enqueue(conn.peer.PeerAddr, p)
+
+	// wait to receive syn|ack packet
+
 }

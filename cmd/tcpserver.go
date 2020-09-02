@@ -44,7 +44,7 @@ func (s *TcpServerCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 	}
 
 	arpProtocol := arp.New(arp.NewTable())
-	if err := arpProtocol.SetAddr("host1_veth0"); err != nil {
+	if err := arpProtocol.SetAddr(s.Iface); err != nil {
 		fmt.Println(err)
 		return subcommands.ExitFailure
 	}
@@ -61,7 +61,7 @@ func (s *TcpServerCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 		fmt.Println(err)
 		return subcommands.ExitFailure
 	}
-	defer ip.Eth.Close()
+	//defer ip.Eth.Close()
 
 	go arpProtocol.Handle()
 	go icmpProtocol.Handle()
@@ -94,6 +94,7 @@ func (s *TcpServerCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 	}()
 
 	// tcp server
+	fmt.Println("[info] tcp server prepare... port=", s.Port)
 	listener, err := tcpProtocol.Listen("0.0.0.0", s.Port)
 	if err != nil {
 		fmt.Printf("[error] %v", err)

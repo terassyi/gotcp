@@ -75,6 +75,12 @@ func (f ControlFlag) String() string {
 	if f.Urg() {
 		flags = append(flags, "urg")
 	}
+	if f.Ecn() {
+		flags = append(flags, "ecn")
+	}
+	if f.Cwr() {
+		flags = append(flags, "cwr")
+	}
 	return strings.Join(flags, "|")
 }
 
@@ -115,6 +121,20 @@ func (f ControlFlag) Ack() bool {
 
 func (f ControlFlag) Urg() bool {
 	if URG&f != 0 {
+		return true
+	}
+	return false
+}
+
+func (f ControlFlag) Ecn() bool {
+	if ECN&f != 0 {
+		return true
+	}
+	return false
+}
+
+func (f ControlFlag) Cwr() bool {
+	if CWR&f != 0 {
 		return true
 	}
 	return false

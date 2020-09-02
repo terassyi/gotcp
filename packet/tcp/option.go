@@ -60,6 +60,17 @@ func (op Options) Byte() []byte {
 	return data
 }
 
+func (op Options) TimeStamp() *TimeStamp {
+	for _, o := range op {
+		switch t := o.(type) {
+		case TimeStamp:
+			return &t
+		default:
+		}
+	}
+	return nil
+}
+
 type EndOfOptionList struct{}
 
 func (EndOfOptionList) Kind() OptionKind {
@@ -196,4 +207,10 @@ func NewTimeStamp() (*TimeStamp, error) {
 	}
 	t := TimeStamp(append(tsval.Bytes(), tsecr...))
 	return &t, nil
+}
+
+func (t TimeStamp) Exchange() TimeStamp {
+	tsval := t.Data()[0:4]
+	tsecr := t.Data()[4:]
+	return append(tsecr, tsval...)
 }

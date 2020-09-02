@@ -36,7 +36,7 @@ func New(name, dst string) (*Ping, error) {
 		return nil, err
 	}
 	a := arp.New(arp.NewTable())
-	if err := a.SetAddr("host1_veth0"); err != nil {
+	if err := a.SetAddr(name); err != nil {
 		return nil, err
 	}
 	e, err := eth.New(iface, a)

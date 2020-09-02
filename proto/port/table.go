@@ -3,7 +3,6 @@ package port
 import (
 	"fmt"
 	"github.com/terassyi/gotcp/packet/ipv4"
-	"github.com/terassyi/gotcp/util"
 	"sync"
 )
 
@@ -27,7 +26,8 @@ func NewPeer(addr *ipv4.IPAddress, peerport, myport int) *Peer {
 }
 
 const (
-	MIN_PORT_RANGE int = 49152
+	//MIN_PORT_RANGE int = 49152
+	MIN_PORT_RANGE int = 60000
 	MAX_PORT_RANGE int = 65535
 )
 
@@ -61,10 +61,10 @@ func (t *Table) Add(addr *ipv4.IPAddress, peerport, srcport int) (*Peer, error) 
 	}
 	t.Entry = append(t.Entry, peer)
 
-	// disable os tcp handle
-	if err := util.DisableOsTcpStack(port); err != nil {
-		return nil, err
-	}
+	//// disable os tcp handle
+	//if err := util.DisableOsTcpStack(port); err != nil {
+	//	return nil, err
+	//}
 	return peer, nil
 }
 
