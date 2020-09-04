@@ -1,7 +1,6 @@
 package tcp
 
 import (
-	"github.com/terassyi/gotcp/packet/ipv4"
 	"github.com/terassyi/gotcp/proto/port"
 )
 
@@ -25,31 +24,9 @@ func (t *Tcp) Dial(addr string, peerport int) (*Conn, error) {
 }
 
 func (t *Tcp) doDial(addr string, peerport int) (*Conn, error) {
-	peerAddr, err := ipv4.StringToIPAddress(addr)
+	dialer, err := t.dial(addr, peerport)
 	if err != nil {
 		return nil, err
 	}
-	peer, err := t.Table.Add(peerAddr, peerport, 0)
-	if err != nil {
-		return nil, err
-	}
-	conn, err := newConn(peer)
-	if err != nil {
-		return nil, err
-	}
-	conn.establish()
-	return nil, nil
-}
-
-func (conn *Conn) establish() error {
-	// tcp active open
-	p, err := conn.activeOpen()
-	if err != nil {
-		return err
-	}
-	// send syn
-	conn.inner.enqueue(conn.peer.PeerAddr, p)
-
-	// wait to receive syn|ack packet
-
+	return dialer.getConnection()
 }

@@ -125,7 +125,10 @@ func (cb *controlBlock) activeOpen() (*tcp.Packet, error) {
 	if cb.state != CLOSED {
 		return nil, fmt.Errorf("invalid state: %v", cb.state.String())
 	}
-	packet, err := tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), 0, 0, tcp.SYN, 29200, 0, nil)
+	cb.Snd.ISS = Random()
+	cb.Snd.NXT = cb.Snd.ISS + 1
+	cb.Snd.UNA = cb.Snd.ISS
+	packet, err := tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), cb.Snd.ISS, 0, tcp.SYN, 29200, 0, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -395,4 +398,23 @@ func newRcv() *ReceiveSequence {
 		UP:  0,
 		IRS: 0,
 	}
+}
+
+func (s *SendSequence) Show() {
+	fmt.Println("-----send sequence-----")
+	fmt.Println("Snd.UNA=", s.UNA)
+	fmt.Println("Snd.NXT=", s.NXT)
+	fmt.Println("Snd.WND=", s.WND)
+	fmt.Println("Snd.UP=", s.UP)
+	fmt.Println("Snd.WL1=", s.WL1)
+	fmt.Println("Snd.WL2=", s.WL2)
+	fmt.Println("Snd.ISS=", s.ISS)
+}
+
+func (r *ReceiveSequence) Show() {
+	fmt.Println("-----recv sequence-----")
+	fmt.Println("Rcv.NXT=", r.NXT)
+	fmt.Println("Rcv.WND=", r.WND)
+	fmt.Println("Rcv.UP=", r.UP)
+	fmt.Println("Rcv.IRS=", r.IRS)
 }

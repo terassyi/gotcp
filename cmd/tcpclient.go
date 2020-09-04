@@ -12,6 +12,7 @@ import (
 	"github.com/terassyi/gotcp/proto/icmp"
 	"github.com/terassyi/gotcp/proto/ipv4"
 	"github.com/terassyi/gotcp/proto/tcp"
+	"time"
 )
 
 type TcpClientCommand struct {
@@ -63,7 +64,7 @@ func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 		fmt.Println(err)
 		return subcommands.ExitFailure
 	}
-	defer ip.Eth.Close()
+	//defer ip.Eth.Close()
 
 	go arpProtocol.Handle()
 	go icmpProtocol.Handle()
@@ -104,6 +105,6 @@ func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 		return subcommands.ExitFailure
 	}
 	fmt.Println(conn)
-
+	time.Sleep(time.Second * 10)
 	return subcommands.ExitSuccess
 }

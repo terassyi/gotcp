@@ -31,14 +31,16 @@ func (t *Tcp) dial(addr string, peerport int) (*dialer, error) {
 	if err != nil {
 		return nil, err
 	}
-	d, err := newDialer(t, peer)
-	if err != nil {
-		return nil, err
+	d := &dialer{
+		tcb:   NewControlBlock(peer),
+		peer:  peer,
+		queue: make(chan AddressedPacket, 100),
+		inner: t,
 	}
+	t.dialers[peer.Port] = d
 	if err := d.establish(); err != nil {
 		return nil, err
 	}
-	t.dialers[peerport] = d
 	return d, nil
 }
 
@@ -49,12 +51,13 @@ func (d *dialer) establish() error {
 		return err
 	}
 	d.inner.enqueue(d.peer.PeerAddr, p)
-
+	fmt.Println("[info] waiting for syn ack packet")
 	// wait to receive syn|ack packet
 	synAck, ok := <-d.queue
 	if !ok {
 		fmt.Println("failed to recv syn from syn queue")
 	}
+	fmt.Println("[debug] received syn ack packet")
 	if !synAck.Packet.Header.OffsetControlFlag.ControlFlag().Syn() || !synAck.Packet.Header.OffsetControlFlag.ControlFlag().Ack() {
 		rep, err := tcp.Build(synAck.Packet.Header.DestinationPort, synAck.Packet.Header.SourcePort,
 			0, 0, tcp.RST, 0, 0, nil)
@@ -65,6 +68,7 @@ func (d *dialer) establish() error {
 		return fmt.Errorf("received packet is not set syn|ack.")
 	}
 	// handle syn|ack
+	fmt.Println("[debug] handling syn ack packet")
 	// This step should be reached only if the ACK is ok, or there is no ACK, and it the segment did not contain a RST.
 	d.tcb.Rcv.NXT = synAck.Packet.Header.Sequence + 1
 	d.tcb.Rcv.IRS = synAck.Packet.Header.Sequence
@@ -82,6 +86,18 @@ func (d *dialer) establish() error {
 		}
 		// send ack packet
 		d.inner.enqueue(d.tcb.peer.PeerAddr, ack)
+		fmt.Println("[info] finished 3 way handshake")
 	}
+	fmt.Println("[error] invalid tcb")
+	d.tcb.Snd.Show()
 	return nil
+}
+
+func (d *dialer) getConnection() (*Conn, error) {
+	return &Conn{
+		controlBlock: d.tcb,
+		Peer:         d.peer,
+		queue:        make(chan AddressedPacket),
+		inner:        d.inner,
+	}, nil
 }

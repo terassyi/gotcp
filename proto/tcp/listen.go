@@ -100,7 +100,7 @@ func (l *Listener) establish() error {
 	opTimeStamp := syn.Packet.Option.TimeStamp()
 	synAck.AddOption(tcp.Options{tcp.MaxSegmentSize(1460), tcp.SACKPermitted{}, tcp.WindowScale(7), opTimeStamp.Exchange()})
 	l.inner.enqueue(l.tcb.peer.PeerAddr, synAck)
-	l.tcb.state = SYN_RECVD
+	l.tcb.SYN_RECVD()
 	fmt.Println("[info] transmission control block state is SYN_RECVD")
 	// wait ack
 	ack, ok := <-l.queue
@@ -118,7 +118,7 @@ func (l *Listener) establish() error {
 	}
 	if l.tcb.Snd.UNA <= ack.Packet.Header.Ack && ack.Packet.Header.Ack <= l.tcb.Snd.NXT {
 		fmt.Println("[info] status move to ESTABLISHED")
-		l.tcb.state = ESTABLISHED
+		l.tcb.ESTABLISHED()
 	} else {
 		rep, err := tcp.Build(syn.Packet.Header.DestinationPort, syn.Packet.Header.SourcePort,
 			0, 0, tcp.RST, 0, 0, nil)

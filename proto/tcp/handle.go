@@ -47,6 +47,7 @@ func (t *Tcp) Recv(buf []byte) {
 }
 
 func (t *Tcp) enqueue(addr *ipv4.IPAddress, packet *tcp.Packet) {
+	fmt.Println("[debug] enqueue to tcp send routine")
 	t.SendQueue <- AddressedPacket{
 		Packet:  packet,
 		Address: addr,

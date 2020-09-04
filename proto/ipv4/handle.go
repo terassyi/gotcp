@@ -122,6 +122,7 @@ func (ip *Ipv4) Send(dst ipv4.IPAddress, protocol ipv4.IPProtocol, data []byte) 
 // this function will be called as goroutine
 func (ip *Ipv4) TcpSend() {
 	for {
+		fmt.Println("[info] waiting tcp packet to send.")
 		addrPacket, ok := <-ip.Tcp.SendQueue
 		if !ok {
 			fmt.Println("failed to handle tcp packet for sending")
