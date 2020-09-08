@@ -70,15 +70,15 @@ func (d *dialer) establish() error {
 	// handle syn|ack
 	fmt.Println("[debug] handling syn ack packet")
 	// This step should be reached only if the ACK is ok, or there is no ACK, and it the segment did not contain a RST.
-	d.tcb.Rcv.NXT = synAck.Packet.Header.Sequence + 1
-	d.tcb.Rcv.IRS = synAck.Packet.Header.Sequence
-	d.tcb.Snd.UNA = synAck.Packet.Header.Ack
-	if d.tcb.Snd.ISS < d.tcb.Snd.UNA {
+	d.tcb.rcv.NXT = synAck.Packet.Header.Sequence + 1
+	d.tcb.rcv.IRS = synAck.Packet.Header.Sequence
+	d.tcb.snd.UNA = synAck.Packet.Header.Ack
+	if d.tcb.snd.ISS < d.tcb.snd.UNA {
 		d.tcb.ESTABLISHED()
 		fmt.Println("[info] transmission control block state is ESTABLISHED")
 		ack, err := tcp.Build(
 			uint16(d.tcb.peer.Port), uint16(d.peer.PeerPort),
-			d.tcb.Snd.NXT, d.tcb.Rcv.NXT,
+			d.tcb.snd.NXT, d.tcb.rcv.NXT,
 			tcp.ACK,
 			synAck.Packet.Header.WindowSize, 0, nil)
 		if err != nil {
@@ -87,17 +87,22 @@ func (d *dialer) establish() error {
 		// send ack packet
 		d.inner.enqueue(d.tcb.peer.PeerAddr, ack)
 		fmt.Println("[info] finished 3 way handshake")
+		return nil
 	}
-	fmt.Println("[error] invalid tcb")
-	d.tcb.Snd.Show()
-	return nil
+	d.tcb.snd.Show()
+	return fmt.Errorf("invalid tcb")
 }
 
 func (d *dialer) getConnection() (*Conn, error) {
-	return &Conn{
+	conn := &Conn{
 		controlBlock: d.tcb,
 		Peer:         d.peer,
-		queue:        make(chan AddressedPacket),
+		queue:        make(chan AddressedPacket, 100),
 		inner:        d.inner,
-	}, nil
+	}
+	// entry connection list
+	d.inner.connections[conn.peer.Port] = conn
+	// delete dialer from dialer list
+	delete(d.inner.dialers, conn.peer.Port)
+	return conn, nil
 }

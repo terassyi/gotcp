@@ -102,11 +102,16 @@ func (t *Tcp) HandlePacket(src *ipv4.IPAddress, buf []byte) {
 	}
 
 	// connection
-	//c, ok := t.connections[int(packet.Header.DestinationPort)]
-	//if ok {
-	//
-	//	return
-	//}
+	c, ok := t.connections[int(packet.Header.DestinationPort)]
+	if ok {
+		if err := c.handle(AddressedPacket{
+			Packet:  packet,
+			Address: src,
+		}); err != nil {
+			return
+		}
+		return
+	}
 	fmt.Println("[info] received packet is not handled. invalid peer.")
 	return
 }

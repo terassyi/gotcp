@@ -61,7 +61,7 @@ func (l *Listener) Accept() (*Conn, error) {
 	if err := l.establish(); err != nil {
 		return nil, err
 	}
-	return nil, nil
+	return l.getConnection()
 }
 
 func (l *Listener) establish() error {
@@ -84,14 +84,14 @@ func (l *Listener) establish() error {
 	l.tcb.peer.PeerPort = int(syn.Packet.Header.SourcePort)
 
 	// update recv sequence
-	l.tcb.Rcv.NXT = syn.Packet.Header.Sequence + 1
-	l.tcb.Rcv.IRS = syn.Packet.Header.Sequence
-	l.tcb.Snd.ISS = Random()
-	l.tcb.Snd.NXT = l.tcb.Snd.ISS + 1
-	l.tcb.Snd.UNA = l.tcb.Snd.ISS
+	l.tcb.rcv.NXT = syn.Packet.Header.Sequence + 1
+	l.tcb.rcv.IRS = syn.Packet.Header.Sequence
+	l.tcb.snd.ISS = Random()
+	l.tcb.snd.NXT = l.tcb.snd.ISS + 1
+	l.tcb.snd.UNA = l.tcb.snd.ISS
 
 	synAck, err := tcp.Build(uint16(l.tcb.peer.Port), uint16(l.tcb.peer.PeerPort),
-		l.tcb.Snd.ISS, l.tcb.Rcv.NXT,
+		l.tcb.snd.ISS, l.tcb.rcv.NXT,
 		tcp.SYN|tcp.ACK,
 		syn.Packet.Header.WindowSize, 0, nil)
 	if err != nil {
@@ -116,7 +116,7 @@ func (l *Listener) establish() error {
 		}
 		l.inner.enqueue(syn.Address, rep)
 	}
-	if l.tcb.Snd.UNA <= ack.Packet.Header.Ack && ack.Packet.Header.Ack <= l.tcb.Snd.NXT {
+	if l.tcb.snd.UNA <= ack.Packet.Header.Ack && ack.Packet.Header.Ack <= l.tcb.snd.NXT {
 		fmt.Println("[info] status move to ESTABLISHED")
 		l.tcb.ESTABLISHED()
 	} else {
@@ -128,4 +128,18 @@ func (l *Listener) establish() error {
 		l.inner.enqueue(syn.Address, rep)
 	}
 	return nil
+}
+
+func (l *Listener) getConnection() (*Conn, error) {
+	conn := &Conn{
+		controlBlock: l.tcb,
+		Peer:         l.tcb.peer,
+		queue:        make(chan AddressedPacket, 100),
+		inner:        l.inner,
+	}
+	// entry connection list
+	l.inner.connections[conn.peer.Port] = conn
+	// delete from listener list
+	delete(l.inner.listeners, conn.peer.Port)
+	return conn, nil
 }

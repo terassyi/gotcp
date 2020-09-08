@@ -13,10 +13,11 @@ import (
 type controlBlock struct {
 	peer    *port.Peer
 	state   state
-	Snd     *SendSequence
-	Rcv     *ReceiveSequence
-	retrans RetransmissionQueue
+	snd     *SendSequence
+	rcv     *ReceiveSequence
+	retrans chan AddressedPacket
 	Window  []byte
+	finSend bool
 	Mutex   *sync.RWMutex
 }
 
@@ -24,14 +25,10 @@ type controlBlock struct {
 
 type state int
 
-type RetransmissionQueue struct {
-	Queue chan []byte
-}
-
 type SendSequence struct {
 	UNA uint32 // send unacknowladged
 	NXT uint32 // send next
-	WND uint32 // send window
+	WND uint16 // send window
 	UP  uint32 // send urgent pointer
 	WL1 uint32 // segment sequence number used for last window update
 	WL2 uint32 // segment acknowledgement number used for last window update
@@ -125,10 +122,10 @@ func (cb *controlBlock) activeOpen() (*tcp.Packet, error) {
 	if cb.state != CLOSED {
 		return nil, fmt.Errorf("invalid state: %v", cb.state.String())
 	}
-	cb.Snd.ISS = Random()
-	cb.Snd.NXT = cb.Snd.ISS + 1
-	cb.Snd.UNA = cb.Snd.ISS
-	packet, err := tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), cb.Snd.ISS, 0, tcp.SYN, 29200, 0, nil)
+	cb.snd.ISS = Random()
+	cb.snd.NXT = cb.snd.ISS + 1
+	cb.snd.UNA = cb.snd.ISS
+	packet, err := tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), cb.snd.ISS, 0, tcp.SYN, 29200, 0, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -196,22 +193,22 @@ func (cb *controlBlock) HandleEvent(packet *tcp.Packet) (*tcp.Packet, error) {
 		if packet.Header.OffsetControlFlag.ControlFlag().Syn() {
 			// TODO check security <SEQ=SEG.ACK><CTL=RST>
 			// TODO if tcb.PRC < SEG.PRC <SEQ=SEG.ACK><CTL=RST>
-			cb.Rcv.NXT = packet.Header.Sequence + 1
-			cb.Rcv.IRS = packet.Header.Sequence
-			cb.Snd.ISS = Random()
-			cb.Snd.NXT = cb.Snd.ISS + 1
-			cb.Snd.UNA = cb.Snd.ISS
+			cb.rcv.NXT = packet.Header.Sequence + 1
+			cb.rcv.IRS = packet.Header.Sequence
+			cb.snd.ISS = Random()
+			cb.snd.NXT = cb.snd.ISS + 1
+			cb.snd.UNA = cb.snd.ISS
 			cb.SYN_RECVD()
 			fmt.Println("[info] transmission control block state is SYN_RECVD")
 			// <SEQ=ISS><ACK=RCV.NXT><CTL=SYN,ACK>
-			return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), cb.Snd.ISS, cb.Rcv.NXT, tcp.SYN|tcp.ACK, windowZero, 0, nil)
+			return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), cb.snd.ISS, cb.rcv.NXT, tcp.SYN|tcp.ACK, windowZero, 0, nil)
 		}
 		// fourth other text or control
 		return nil, fmt.Errorf("invalid State")
 	case SYN_SENT:
 		// first check ACK
 		if packet.Header.OffsetControlFlag.ControlFlag().Ack() {
-			if packet.Header.Ack <= cb.Snd.ISS || packet.Header.Ack > cb.Snd.NXT {
+			if packet.Header.Ack <= cb.snd.ISS || packet.Header.Ack > cb.snd.NXT {
 				// <SEQ=SEG.ACK><CTL=RST>
 				if !packet.Header.OffsetControlFlag.ControlFlag().Rst() {
 					return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), packet.Header.Ack, 0, tcp.RST, windowZero, 0, nil)
@@ -230,24 +227,24 @@ func (cb *controlBlock) HandleEvent(packet *tcp.Packet) (*tcp.Packet, error) {
 		// fourth check SYN
 		if packet.Header.OffsetControlFlag.ControlFlag().Syn() {
 			// This step should be reached only if the ACK is ok, or there is no ACK, and it the segment did not contain a RST.
-			cb.Rcv.NXT = packet.Header.Sequence + 1
-			cb.Rcv.IRS = packet.Header.Sequence
+			cb.rcv.NXT = packet.Header.Sequence + 1
+			cb.rcv.IRS = packet.Header.Sequence
 			if packet.Header.OffsetControlFlag.ControlFlag().Ack() {
-				cb.Snd.UNA = packet.Header.Ack
+				cb.snd.UNA = packet.Header.Ack
 				// TODO delete retransmission queue
-				if cb.Snd.ISS < cb.Snd.UNA {
+				if cb.snd.ISS < cb.snd.UNA {
 					// <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
 					cb.state = ESTABLISHED
-					return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), cb.Snd.NXT, cb.Rcv.NXT, tcp.ACK, windowZero, 0, nil)
+					return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), cb.snd.NXT, cb.rcv.NXT, tcp.ACK, windowZero, 0, nil)
 					// TODO check sixth step
 				}
 			}
 			// <SEQ=ISS><ACK=RCV.NXT><CTL=SYN,ACK>
 			cb.state = SYN_RECVD
-			return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), cb.Snd.ISS, cb.Rcv.NXT, tcp.SYN|tcp.ACK, windowZero, 0, nil)
+			return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), cb.snd.ISS, cb.rcv.NXT, tcp.SYN|tcp.ACK, windowZero, 0, nil)
 		}
 	}
-	if packet.Header.Sequence != cb.Rcv.NXT {
+	if packet.Header.Sequence != cb.rcv.NXT {
 		return nil, fmt.Errorf("sequence mismatch")
 	}
 	if packet.Header.OffsetControlFlag.ControlFlag().Syn() || packet.Header.OffsetControlFlag.ControlFlag().Rst() {
@@ -260,7 +257,7 @@ func (cb *controlBlock) HandleEvent(packet *tcp.Packet) (*tcp.Packet, error) {
 	// if ack flag is set
 	switch cb.state {
 	case SYN_RECVD:
-		if cb.Snd.UNA <= packet.Header.Ack && packet.Header.Ack <= cb.Snd.NXT {
+		if cb.snd.UNA <= packet.Header.Ack && packet.Header.Ack <= cb.snd.NXT {
 			cb.state = ESTABLISHED
 			// queue push
 		} else {
@@ -274,10 +271,10 @@ func (cb *controlBlock) HandleEvent(packet *tcp.Packet) (*tcp.Packet, error) {
 		// pthread_cond_signal
 	default:
 		// ESTABLISHED, FIN_WAIT1, FIN_WAIT2, CLOSE_WAIT, CLOSING
-		if cb.Snd.UNA < packet.Header.Ack && packet.Header.Ack <= cb.Snd.NXT {
-			cb.Snd.UNA = packet.Header.Ack
-		} else if packet.Header.Ack > cb.Snd.NXT {
-			return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), cb.Snd.NXT, cb.Rcv.NXT, tcp.ACK, windowZero, 0, nil)
+		if cb.snd.UNA < packet.Header.Ack && packet.Header.Ack <= cb.snd.NXT {
+			cb.snd.UNA = packet.Header.Ack
+		} else if packet.Header.Ack > cb.snd.NXT {
+			return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), cb.snd.NXT, cb.rcv.NXT, tcp.ACK, windowZero, 0, nil)
 		}
 		// send window update
 		if cb.state == FIN_WAIT1 {
@@ -287,7 +284,7 @@ func (cb *controlBlock) HandleEvent(packet *tcp.Packet) (*tcp.Packet, error) {
 			// if retransmission queue is empty, tcp can close
 		}
 		if cb.state == CLOSING {
-			if packet.Header.Ack == cb.Snd.NXT {
+			if packet.Header.Ack == cb.snd.NXT {
 				cb.state = TIME_WAIT
 				// pthread_cond_signal
 			}
@@ -300,18 +297,18 @@ func (cb *controlBlock) HandleEvent(packet *tcp.Packet) (*tcp.Packet, error) {
 		switch cb.state {
 		case ESTABLISHED, FIN_WAIT1, FIN_WAIT2:
 			// handle data
-			cb.Rcv.NXT = packet.Header.Sequence + uint32(len(packet.Data))
-			cb.Rcv.WND -= uint32(len(packet.Data))
+			cb.rcv.NXT = packet.Header.Sequence + uint32(len(packet.Data))
+			cb.rcv.WND -= uint32(len(packet.Data))
 			cb.Window = append(cb.Window, packet.Data...)
 			// cb.window <- packet.Data
 			// <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
-			return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), cb.Snd.NXT, cb.Rcv.NXT, tcp.ACK, windowZero, 0, nil)
+			return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), cb.snd.NXT, cb.rcv.NXT, tcp.ACK, windowZero, 0, nil)
 			// pthread_cond_signal
 		}
 	}
 	// eighth check FIN
 	if packet.Header.OffsetControlFlag.ControlFlag().Fin() {
-		cb.Rcv.NXT++
+		cb.rcv.NXT++
 		switch cb.state {
 		case ESTABLISHED, SYN_RECVD:
 			cb.state = CLOSE_WAIT
@@ -323,7 +320,7 @@ func (cb *controlBlock) HandleEvent(packet *tcp.Packet) (*tcp.Packet, error) {
 			// start time-wait timer
 			cb.state = TIME_WAIT
 		}
-		return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), cb.Snd.NXT, cb.Rcv.NXT, tcp.ACK, windowZero, 0, nil)
+		return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), cb.snd.NXT, cb.rcv.NXT, tcp.ACK, windowZero, 0, nil)
 	}
 	return nil, fmt.Errorf("not matched any State")
 }
@@ -357,6 +354,10 @@ func (cb *controlBlock) IsReadySend() bool {
 	}
 }
 
+func (cb *controlBlock) startMSL() {
+	time.Sleep(time.Minute)
+}
+
 //func (cb *ControlBlock) buildWindow() []byte {
 //	buf := make([]byte, 65535)
 //	cb.Mutex.Lock()
@@ -371,11 +372,14 @@ func (cb *controlBlock) IsReadySend() bool {
 
 func NewControlBlock(peer *port.Peer) *controlBlock {
 	return &controlBlock{
-		peer:   peer,
-		state:  CLOSED,
-		Snd:    newSnd(),
-		Rcv:    newRcv(),
-		Window: make([]byte, 0, 65535),
+		peer:    peer,
+		state:   CLOSED,
+		snd:     newSnd(),
+		rcv:     newRcv(),
+		finSend: false,
+		retrans: make(chan AddressedPacket, 100),
+		Window:  make([]byte, 0, 65535),
+		Mutex:   &sync.RWMutex{},
 	}
 }
 
@@ -402,19 +406,19 @@ func newRcv() *ReceiveSequence {
 
 func (s *SendSequence) Show() {
 	fmt.Println("-----send sequence-----")
-	fmt.Println("Snd.UNA=", s.UNA)
-	fmt.Println("Snd.NXT=", s.NXT)
-	fmt.Println("Snd.WND=", s.WND)
-	fmt.Println("Snd.UP=", s.UP)
-	fmt.Println("Snd.WL1=", s.WL1)
-	fmt.Println("Snd.WL2=", s.WL2)
-	fmt.Println("Snd.ISS=", s.ISS)
+	fmt.Println("snd.UNA=", s.UNA)
+	fmt.Println("snd.NXT=", s.NXT)
+	fmt.Println("snd.WND=", s.WND)
+	fmt.Println("snd.UP=", s.UP)
+	fmt.Println("snd.WL1=", s.WL1)
+	fmt.Println("snd.WL2=", s.WL2)
+	fmt.Println("snd.ISS=", s.ISS)
 }
 
 func (r *ReceiveSequence) Show() {
 	fmt.Println("-----recv sequence-----")
-	fmt.Println("Rcv.NXT=", r.NXT)
-	fmt.Println("Rcv.WND=", r.WND)
-	fmt.Println("Rcv.UP=", r.UP)
-	fmt.Println("Rcv.IRS=", r.IRS)
+	fmt.Println("rcv.NXT=", r.NXT)
+	fmt.Println("rcv.WND=", r.WND)
+	fmt.Println("rcv.UP=", r.UP)
+	fmt.Println("rcv.IRS=", r.IRS)
 }

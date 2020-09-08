@@ -104,7 +104,12 @@ func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 		fmt.Printf("[error] %s", err)
 		return subcommands.ExitFailure
 	}
+
 	fmt.Println(conn)
 	time.Sleep(time.Second * 10)
+	if err := conn.Close(); err != nil {
+		fmt.Printf("[error] %s", err)
+		return subcommands.ExitFailure
+	}
 	return subcommands.ExitSuccess
 }
