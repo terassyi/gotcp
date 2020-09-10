@@ -52,6 +52,7 @@ func (d *dialer) establish() error {
 		return err
 	}
 	d.inner.enqueue(d.peer.PeerAddr, p)
+	//d.tcb.snd.NXT += 1
 	d.tcb.showSeq()
 	fmt.Println("[info] waiting for syn ack packet")
 	// wait to receive syn|ack packet
@@ -59,6 +60,7 @@ func (d *dialer) establish() error {
 	if !ok {
 		fmt.Println("failed to recv syn from syn queue")
 	}
+	//d.tcb.rcv.NXT += 1
 	d.tcb.showSeq()
 	fmt.Println("[debug] received syn ack packet")
 	if !synAck.Packet.Header.OffsetControlFlag.ControlFlag().Syn() || !synAck.Packet.Header.OffsetControlFlag.ControlFlag().Ack() {
@@ -87,7 +89,7 @@ func (d *dialer) establish() error {
 		if err != nil {
 			return err
 		}
-		d.tcb.rcv.NXT += 1
+		//d.tcb.snd.NXT += 1
 		// send ack packet
 		d.inner.enqueue(d.tcb.peer.PeerAddr, ack)
 		d.tcb.showSeq()

@@ -87,6 +87,7 @@ func (c *Conn) activeClose() error {
 		c.tcb.TIME_WAIT()
 		c.tcb.startMSL()
 		c.tcb.CLOSED()
+		fmt.Println("[debug] connection closed")
 
 	} else {
 		fmt.Println("[info] transmission control block state is LAST-ACK")
@@ -104,6 +105,15 @@ func (c *Conn) passiveClose(fin AddressedPacket) error {
 	if c.tcb.state == SYN_RECVD || c.tcb.state == ESTABLISHED {
 		fmt.Println("[info] transmission control block state is CLOSE-WAIT")
 		c.tcb.CLOSE_WAIT()
+		if err := c.send(tcp.ACK, nil); err != nil {
+			return err
+		}
+		c.tcb.snd.NXT -= 1
+		fmt.Println("[debug] hogehoge")
+		c.tcb.LAST_ACK()
+		if err := c.send(tcp.ACK|tcp.FIN, nil); err != nil {
+			return err
+		}
 	}
 	if c.tcb.state == FIN_WAIT1 {
 		if c.tcb.finSend {
@@ -172,6 +182,7 @@ func (c *Conn) handle(packet AddressedPacket) error {
 	// fourth, check the SYN bit
 	fmt.Println("[debug] (fourth) check SYN")
 	if packet.Packet.Header.OffsetControlFlag.ControlFlag().Syn() {
+		c.tcb.rcv.NXT += 1
 		if err := c.send(tcp.RST, nil); err != nil {
 			return err
 		}
@@ -193,6 +204,7 @@ func (c *Conn) handle(packet AddressedPacket) error {
 			return nil
 		case FIN_WAIT2:
 			c.handleEstablished(packet)
+			c.tcb.rcv.NXT -= 1
 			if len(c.tcb.retrans) == 0 {
 				c.tcb.TIME_WAIT()
 			}
@@ -239,10 +251,9 @@ func (c *Conn) handle(packet AddressedPacket) error {
 		// ignore
 	case SYN_RECVD, ESTABLISHED:
 		fmt.Println("[debug] reach handle fin phase")
-		if err := c.handleFin(packet); err != nil {
+		if err := c.passiveClose(packet); err != nil {
 			return err
 		}
-		c.tcb.CLOSE_WAIT()
 	case FIN_WAIT1:
 		fmt.Println("[debug] fuga")
 		// ack
@@ -273,7 +284,7 @@ func (c *Conn) handleEstablished(packet AddressedPacket) {
 
 		}
 	}
-	//c.tcb.rcv.NXT += 1
+	c.tcb.rcv.NXT += 1
 }
 
 func (c *Conn) handleSegment(packet AddressedPacket) error {
@@ -292,12 +303,10 @@ func (c *Conn) handleSegment(packet AddressedPacket) error {
 }
 
 func (c *Conn) handleFin(packet AddressedPacket) error {
-	return c.send(tcp.FIN|tcp.ACK, nil)
+	return c.send(tcp.ACK, nil)
 }
 
 func (c *Conn) send(flag tcp.ControlFlag, data []byte) error {
-	c.tcb.snd.NXT += 1
-	c.tcb.rcv.NXT += 1
 	p, err := tcp.Build(
 		uint16(c.tcb.peer.Port), uint16(c.tcb.peer.PeerPort),
 		c.tcb.snd.NXT, c.tcb.rcv.NXT, flag, uint16(c.tcb.rcv.WND), 0, data)
@@ -305,6 +314,7 @@ func (c *Conn) send(flag tcp.ControlFlag, data []byte) error {
 		return err
 	}
 	c.inner.enqueue(c.tcb.peer.PeerAddr, p)
+	c.tcb.snd.NXT += 1
 	c.tcb.showSeq()
 	return nil
 }
