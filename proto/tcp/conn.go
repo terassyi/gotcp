@@ -7,18 +7,23 @@ import (
 )
 
 type Conn struct {
-	tcb   *controlBlock
-	Peer  *port.Peer
-	queue chan AddressedPacket
-	inner *Tcp
+	tcb        *controlBlock
+	Peer       *port.Peer
+	queue      chan AddressedPacket
+	closeQueue chan AddressedPacket
+	rcvBuffer  []byte
+	inner      *Tcp
 }
 
 func newConn(peer *port.Peer) (*Conn, error) {
-	return &Conn{
-		tcb:   NewControlBlock(peer),
-		Peer:  peer,
-		queue: make(chan AddressedPacket, 100),
-	}, nil
+	conn := &Conn{
+		tcb:       NewControlBlock(peer),
+		Peer:      peer,
+		queue:     make(chan AddressedPacket, 100),
+		rcvBuffer: make([]byte, 0, 1024),
+	}
+	conn.tcb.rcv.WND = 1024
+	return conn, nil
 }
 
 func (t *Tcp) Dial(addr string, peerport int) (*Conn, error) {
@@ -42,23 +47,46 @@ func (c *Conn) activeClose() error {
 	if c.tcb.state != ESTABLISHED && c.tcb.state != CLOSE_WAIT && c.tcb.state != SYN_RECVD {
 		return fmt.Errorf("invalid state")
 	}
-	fin, err := tcp.Build(
-		uint16(c.tcb.peer.Port), uint16(c.tcb.peer.PeerPort),
-		c.tcb.snd.NXT, c.tcb.rcv.NXT,
-		tcp.FIN|tcp.ACK,
-		0, 0, nil)
-	if err != nil {
+	if err := c.send(tcp.ACK|tcp.FIN, nil); err != nil {
 		return err
 	}
-	c.inner.enqueue(c.tcb.peer.PeerAddr, fin)
+	c.tcb.finSend = true
 	if c.tcb.state == SYN_RECVD || c.tcb.state == ESTABLISHED {
 		fmt.Println("[info] transmission control block state is FIN-WAIT1")
 		c.tcb.FIN_WAIT1()
 		// wait ack of fin
-
+		p, ok := <-c.closeQueue
+		if !ok {
+			return fmt.Errorf("failed to recieve ack of fin.")
+		}
+		if p.Packet.Header.OffsetControlFlag.ControlFlag().Fin() {
+			// simultaneous close
+			if err := c.send(tcp.ACK, nil); err != nil {
+				return err
+			}
+			c.tcb.CLOSING()
+			_, ok := <-c.closeQueue
+			if !ok {
+				return fmt.Errorf("failed to recieve ack of fin")
+			}
+			c.tcb.TIME_WAIT()
+			c.tcb.startMSL()
+			c.tcb.CLOSED()
+			return nil
+		}
 		fmt.Println("[info] transmission control block state is FIN-WAIT2")
 		c.tcb.FIN_WAIT2()
 		// wait fin
+		_, ok = <-c.closeQueue
+		if !ok {
+			return fmt.Errorf("failed to recieve ack of fin.")
+		}
+		if err := c.send(tcp.ACK, nil); err != nil {
+			return err
+		}
+		c.tcb.TIME_WAIT()
+		c.tcb.startMSL()
+		c.tcb.CLOSED()
 
 	} else {
 		fmt.Println("[info] transmission control block state is LAST-ACK")
@@ -105,6 +133,7 @@ func (c *Conn) passiveClose(fin AddressedPacket) error {
 
 func (c *Conn) handle(packet AddressedPacket) error {
 	// handle incoming segment
+	fmt.Println("[info] handling connection, handling incoming segment.")
 	// first check sequence number
 	/*
 	   Segment Receive  Test
@@ -120,39 +149,48 @@ func (c *Conn) handle(packet AddressedPacket) error {
 	     >0      >0     RCV.NXT =< SEG.SEQ < RCV.NXT+RCV.WND
 	                 or RCV.NXT =< SEG.SEQ+SEG.LEN-1 < RCV.NXT+RCV.WND
 	*/
+	fmt.Println("[debug] (first) check sequence number")
 	if c.tcb.rcv.WND == 0 || packet.Packet.Header.Sequence != c.tcb.rcv.NXT {
-		if err := c.send(c.tcb.snd.NXT, c.tcb.rcv.NXT, tcp.ACK, nil); err != nil {
-			return err
-		}
+		//if err := c.send(tcp.ACK, nil); err != nil {
+		//	return err
+		//}
+		fmt.Println("[debug] packet seq num = ", packet.Packet.Header.Sequence)
+		fmt.Println("[debug] recv nxt = ", c.tcb.rcv.NXT)
 		return fmt.Errorf("recieve window is zero")
 	}
 
 	// second check the RST bit,
+	fmt.Println("[debug] (second) check RST")
 	if packet.Packet.Header.OffsetControlFlag.ControlFlag().Rst() {
 		c.tcb.CLOSED()
 		return nil
 	}
 	// third check security and precedence
+	fmt.Println("[debug] (third) check security and precedence nop")
 	// TODO
 
 	// fourth, check the SYN bit
+	fmt.Println("[debug] (fourth) check SYN")
 	if packet.Packet.Header.OffsetControlFlag.ControlFlag().Syn() {
-		if err := c.send(c.tcb.snd.NXT, c.tcb.rcv.NXT, tcp.RST, nil); err != nil {
+		if err := c.send(tcp.RST, nil); err != nil {
 			return err
 		}
 		c.tcb.CLOSED()
 		return nil
 	}
 	// fifth check the ACK field
+	fmt.Println("[debug] (fifth) check ACK")
 	if packet.Packet.Header.OffsetControlFlag.ControlFlag().Ack() {
 		switch c.tcb.state {
 		case ESTABLISHED:
+			fmt.Println("[debug] pass here")
 			c.handleEstablished(packet)
 		case FIN_WAIT1:
 			c.handleEstablished(packet)
 			if c.tcb.finSend {
-				c.tcb.FIN_WAIT2()
+				c.closeQueue <- packet
 			}
+			return nil
 		case FIN_WAIT2:
 			c.handleEstablished(packet)
 			if len(c.tcb.retrans) == 0 {
@@ -172,7 +210,7 @@ func (c *Conn) handle(packet AddressedPacket) error {
 			}
 		case TIME_WAIT:
 			// resend fin
-			if err := c.send(c.tcb.snd.NXT, c.tcb.rcv.NXT, tcp.FIN|tcp.ACK, nil); err != nil {
+			if err := c.send(tcp.FIN|tcp.ACK, nil); err != nil {
 				return err
 			}
 		}
@@ -180,10 +218,46 @@ func (c *Conn) handle(packet AddressedPacket) error {
 		return fmt.Errorf("ack field is not set")
 	}
 	// sixth check the URG bit
+	fmt.Println("[debug] (sixth) check URG nop")
 	// TODO
 
 	// seventh process the segment text
-
+	fmt.Println("[debug] (seventh) process the segment text")
+	switch c.tcb.state {
+	case ESTABLISHED, FIN_WAIT1, FIN_WAIT2:
+		if err := c.handleSegment(packet); err != nil {
+			return err
+		}
+	default:
+		// ignore the segment
+	}
+	// eighth check fin bit
+	fmt.Println("[debug] (eight) check FIN")
+	switch c.tcb.state {
+	case CLOSED, LISTEN, SYN_SENT:
+		fmt.Println("[debug] hoge~")
+		// ignore
+	case SYN_RECVD, ESTABLISHED:
+		fmt.Println("[debug] reach handle fin phase")
+		if err := c.handleFin(packet); err != nil {
+			return err
+		}
+		c.tcb.CLOSE_WAIT()
+	case FIN_WAIT1:
+		fmt.Println("[debug] fuga")
+		// ack
+	case FIN_WAIT2:
+		fmt.Println("[debug] reach passive close phase")
+		c.closeQueue <- packet
+		//if err := c.handleFin(packet); err != nil {
+		if err := c.passiveClose(packet); err != nil {
+			return err
+		}
+		c.tcb.TIME_WAIT()
+	default:
+		fmt.Println("[debug] stay ", c.tcb.state.String())
+		// stay
+	}
 	return nil
 }
 
@@ -199,15 +273,38 @@ func (c *Conn) handleEstablished(packet AddressedPacket) {
 
 		}
 	}
+	//c.tcb.rcv.NXT += 1
 }
 
-func (c *Conn) send(seq, ack uint32, flag tcp.ControlFlag, data []byte) error {
+func (c *Conn) handleSegment(packet AddressedPacket) error {
+	if packet.Packet.Data == nil || len(packet.Packet.Data) == 0 {
+		fmt.Println("[info] tcp segment data is empty.")
+		return nil
+	}
+	c.rcvBuffer = append(c.rcvBuffer, packet.Packet.Data...)
+	l := len(packet.Packet.Data)
+	c.tcb.rcv.NXT = c.tcb.rcv.NXT + uint32(l)
+	c.tcb.rcv.WND = c.tcb.rcv.WND - uint32(l)
+	if err := c.send(tcp.ACK, nil); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Conn) handleFin(packet AddressedPacket) error {
+	return c.send(tcp.FIN|tcp.ACK, nil)
+}
+
+func (c *Conn) send(flag tcp.ControlFlag, data []byte) error {
+	c.tcb.snd.NXT += 1
+	c.tcb.rcv.NXT += 1
 	p, err := tcp.Build(
 		uint16(c.tcb.peer.Port), uint16(c.tcb.peer.PeerPort),
-		seq, ack, flag, uint16(c.tcb.rcv.WND), 0, data)
+		c.tcb.snd.NXT, c.tcb.rcv.NXT, flag, uint16(c.tcb.rcv.WND), 0, data)
 	if err != nil {
 		return err
 	}
 	c.inner.enqueue(c.tcb.peer.PeerAddr, p)
+	c.tcb.showSeq()
 	return nil
 }

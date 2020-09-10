@@ -108,9 +108,12 @@ func (t *Tcp) HandlePacket(src *ipv4.IPAddress, buf []byte) {
 			Packet:  packet,
 			Address: src,
 		}); err != nil {
+			fmt.Println("[error] ", err)
 			return
 		}
 		return
+	} else {
+		fmt.Println("[info] can't find connection")
 	}
 	fmt.Println("[info] received packet is not handled. invalid peer.")
 	return

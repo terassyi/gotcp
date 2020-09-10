@@ -12,6 +12,7 @@ import (
 	"github.com/terassyi/gotcp/proto/icmp"
 	"github.com/terassyi/gotcp/proto/ipv4"
 	"github.com/terassyi/gotcp/proto/tcp"
+	"time"
 )
 
 type TcpServerCommand struct {
@@ -107,6 +108,7 @@ func (s *TcpServerCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 	}
 
 	fmt.Println(conn)
+	time.Sleep(time.Minute)
 
 	return subcommands.ExitSuccess
 }

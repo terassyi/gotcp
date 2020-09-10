@@ -111,5 +111,6 @@ func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 		fmt.Printf("[error] %s", err)
 		return subcommands.ExitFailure
 	}
+	time.Sleep(time.Second * 10)
 	return subcommands.ExitSuccess
 }

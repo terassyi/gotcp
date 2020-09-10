@@ -1,7 +1,6 @@
 package ipv4
 
 import (
-	"encoding/hex"
 	"fmt"
 	etherframe "github.com/terassyi/gotcp/packet/ethernet"
 	"github.com/terassyi/gotcp/packet/ipv4"
@@ -122,17 +121,17 @@ func (ip *Ipv4) Send(dst ipv4.IPAddress, protocol ipv4.IPProtocol, data []byte) 
 // this function will be called as goroutine
 func (ip *Ipv4) TcpSend() {
 	for {
-		fmt.Println("[info] waiting tcp packet to send.")
+		//fmt.Println("[info] waiting tcp packet to send.")
 		addrPacket, ok := <-ip.Tcp.SendQueue
 		if !ok {
 			fmt.Println("failed to handle tcp packet for sending")
+			continue
 		}
 		addrPacket.Packet.Show()
 		data, err := addrPacket.Packet.Serialize()
 		if err != nil {
 			fmt.Println(err)
 		}
-		hex.Dump(data)
 		l, err := ip.Send(*addrPacket.Address, ipv4.IPTCPProtocol, data)
 		if err != nil {
 			fmt.Println(err)

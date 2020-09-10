@@ -100,6 +100,7 @@ func (l *Listener) establish() error {
 	opTimeStamp := syn.Packet.Option.TimeStamp()
 	synAck.AddOption(tcp.Options{tcp.MaxSegmentSize(1460), tcp.SACKPermitted{}, tcp.WindowScale(7), opTimeStamp.Exchange()})
 	l.inner.enqueue(l.tcb.peer.PeerAddr, synAck)
+	l.tcb.showSeq()
 	l.tcb.SYN_RECVD()
 	fmt.Println("[info] transmission control block state is SYN_RECVD")
 	// wait ack
@@ -107,6 +108,8 @@ func (l *Listener) establish() error {
 	if !ok {
 		return fmt.Errorf("failed to recv syn from syn queue")
 	}
+	l.tcb.snd.NXT += 1
+	l.tcb.showSeq()
 	// if not ack
 	if !ack.Packet.Header.OffsetControlFlag.ControlFlag().Ack() {
 		rep, err := tcp.Build(syn.Packet.Header.DestinationPort, syn.Packet.Header.SourcePort,
@@ -116,6 +119,7 @@ func (l *Listener) establish() error {
 		}
 		l.inner.enqueue(syn.Address, rep)
 	}
+	l.tcb.rcv.NXT += 1
 	if l.tcb.snd.UNA <= ack.Packet.Header.Ack && ack.Packet.Header.Ack <= l.tcb.snd.NXT {
 		fmt.Println("[info] status move to ESTABLISHED")
 		l.tcb.ESTABLISHED()
@@ -132,14 +136,15 @@ func (l *Listener) establish() error {
 
 func (l *Listener) getConnection() (*Conn, error) {
 	conn := &Conn{
-		controlBlock: l.tcb,
-		Peer:         l.tcb.peer,
-		queue:        make(chan AddressedPacket, 100),
-		inner:        l.inner,
+		tcb:        l.tcb,
+		Peer:       l.tcb.peer,
+		queue:      make(chan AddressedPacket, 100),
+		closeQueue: make(chan AddressedPacket, 1),
+		inner:      l.inner,
 	}
 	// entry connection list
-	l.inner.connections[conn.peer.Port] = conn
+	l.inner.connections[conn.Peer.Port] = conn
 	// delete from listener list
-	delete(l.inner.listeners, conn.peer.Port)
+	delete(l.inner.listeners, conn.Peer.Port)
 	return conn, nil
 }

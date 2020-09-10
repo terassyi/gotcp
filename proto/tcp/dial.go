@@ -37,6 +37,7 @@ func (t *Tcp) dial(addr string, peerport int) (*dialer, error) {
 		queue: make(chan AddressedPacket, 100),
 		inner: t,
 	}
+	d.tcb.rcv.WND = 1024
 	t.dialers[peer.Port] = d
 	if err := d.establish(); err != nil {
 		return nil, err
@@ -51,12 +52,14 @@ func (d *dialer) establish() error {
 		return err
 	}
 	d.inner.enqueue(d.peer.PeerAddr, p)
+	d.tcb.showSeq()
 	fmt.Println("[info] waiting for syn ack packet")
 	// wait to receive syn|ack packet
 	synAck, ok := <-d.queue
 	if !ok {
 		fmt.Println("failed to recv syn from syn queue")
 	}
+	d.tcb.showSeq()
 	fmt.Println("[debug] received syn ack packet")
 	if !synAck.Packet.Header.OffsetControlFlag.ControlFlag().Syn() || !synAck.Packet.Header.OffsetControlFlag.ControlFlag().Ack() {
 		rep, err := tcp.Build(synAck.Packet.Header.DestinationPort, synAck.Packet.Header.SourcePort,
@@ -84,8 +87,10 @@ func (d *dialer) establish() error {
 		if err != nil {
 			return err
 		}
+		d.tcb.rcv.NXT += 1
 		// send ack packet
 		d.inner.enqueue(d.tcb.peer.PeerAddr, ack)
+		d.tcb.showSeq()
 		fmt.Println("[info] finished 3 way handshake")
 		return nil
 	}
@@ -95,14 +100,15 @@ func (d *dialer) establish() error {
 
 func (d *dialer) getConnection() (*Conn, error) {
 	conn := &Conn{
-		controlBlock: d.tcb,
-		Peer:         d.peer,
-		queue:        make(chan AddressedPacket, 100),
-		inner:        d.inner,
+		tcb:        d.tcb,
+		Peer:       d.peer,
+		queue:      make(chan AddressedPacket, 100),
+		closeQueue: make(chan AddressedPacket, 1),
+		inner:      d.inner,
 	}
 	// entry connection list
-	d.inner.connections[conn.peer.Port] = conn
+	d.inner.connections[conn.Peer.Port] = conn
 	// delete dialer from dialer list
-	delete(d.inner.dialers, conn.peer.Port)
+	delete(d.inner.dialers, conn.Peer.Port)
 	return conn, nil
 }

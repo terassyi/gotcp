@@ -358,6 +358,10 @@ func (cb *controlBlock) startMSL() {
 	time.Sleep(time.Minute)
 }
 
+func (cb *controlBlock) showSeq() {
+	fmt.Printf("[info] <rcv.nxt=%d snd.nxt=%d\n", cb.rcv.NXT, cb.snd.NXT)
+}
+
 //func (cb *ControlBlock) buildWindow() []byte {
 //	buf := make([]byte, 65535)
 //	cb.Mutex.Lock()
@@ -398,7 +402,7 @@ func newSnd() *SendSequence {
 func newRcv() *ReceiveSequence {
 	return &ReceiveSequence{
 		NXT: 0,
-		WND: 0,
+		WND: 1024,
 		UP:  0,
 		IRS: 0,
 	}
