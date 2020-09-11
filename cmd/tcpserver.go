@@ -106,9 +106,24 @@ func (s *TcpServerCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 		fmt.Printf("[error] %v", err)
 		return subcommands.ExitFailure
 	}
+	time.Sleep(time.Second * 2)
+	buf := make([]byte, 20)
+	l, err := conn.Read(buf)
+	if err != nil {
+		fmt.Println("[error] ", err)
+		return subcommands.ExitFailure
+	}
+	fmt.Println("[info] message recv: ", string(buf))
 
-	fmt.Println(conn)
-	time.Sleep(time.Minute)
+	time.Sleep(time.Second * 10)
+	message := "Hello from gotcp server"
+	l, err = conn.Write([]byte(message))
+	if err != nil {
+		fmt.Println("[error] ", err)
+		return subcommands.ExitFailure
+	}
+	fmt.Printf("[info] message send %dbytes\n", l)
 
+	time.Sleep(time.Second * 20)
 	return subcommands.ExitSuccess
 }

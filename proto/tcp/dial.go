@@ -106,8 +106,11 @@ func (d *dialer) getConnection() (*Conn, error) {
 		Peer:       d.peer,
 		queue:      make(chan AddressedPacket, 100),
 		closeQueue: make(chan AddressedPacket, 1),
+		rcvBuffer:  make([]byte, window),
+		readyQueue: make(chan []byte, 10),
 		inner:      d.inner,
 	}
+	conn.pushFlag = true
 	// entry connection list
 	d.inner.connections[conn.Peer.Port] = conn
 	// delete dialer from dialer list

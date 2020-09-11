@@ -105,7 +105,24 @@ func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 		return subcommands.ExitFailure
 	}
 
-	fmt.Println(conn)
+	message := "Hello from gotcp client"
+	time.Sleep(time.Second * 10)
+	l, err := conn.Write([]byte(message))
+	if err != nil {
+		fmt.Println("[error] ", err)
+		return subcommands.ExitFailure
+	}
+	fmt.Printf("[info] message sent %dbytes\n", l)
+	time.Sleep(time.Second * 2)
+
+	buf := make([]byte, 20)
+	l, err = conn.Read(buf)
+	if err != nil {
+		fmt.Println("[error] ", err)
+		return subcommands.ExitFailure
+	}
+	fmt.Println("[info] message recv: ", string(buf))
+
 	time.Sleep(time.Second * 10)
 	if err := conn.Close(); err != nil {
 		fmt.Printf("[error] %s", err)

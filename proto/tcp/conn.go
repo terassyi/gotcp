@@ -1,6 +1,7 @@
 package tcp
 
 import (
+	"encoding/hex"
 	"fmt"
 	"github.com/terassyi/gotcp/packet/tcp"
 	"github.com/terassyi/gotcp/proto/port"
@@ -12,15 +13,20 @@ type Conn struct {
 	queue      chan AddressedPacket
 	closeQueue chan AddressedPacket
 	rcvBuffer  []byte
+	readyQueue chan []byte
 	inner      *Tcp
+	pushFlag   bool
 }
+
+const window int = 1024
 
 func newConn(peer *port.Peer) (*Conn, error) {
 	conn := &Conn{
-		tcb:       NewControlBlock(peer),
-		Peer:      peer,
-		queue:     make(chan AddressedPacket, 100),
-		rcvBuffer: make([]byte, 0, 1024),
+		tcb:        NewControlBlock(peer),
+		Peer:       peer,
+		queue:      make(chan AddressedPacket, 100),
+		rcvBuffer:  make([]byte, 0, window),
+		readyQueue: make(chan []byte, 10),
 	}
 	conn.tcb.rcv.WND = 1024
 	return conn, nil
@@ -59,6 +65,7 @@ func (c *Conn) activeClose() error {
 		if !ok {
 			return fmt.Errorf("failed to recieve ack of fin.")
 		}
+		c.tcb.rcv.NXT -= 1
 		if p.Packet.Header.OffsetControlFlag.ControlFlag().Fin() {
 			// simultaneous close
 			if err := c.send(tcp.ACK, nil); err != nil {
@@ -81,10 +88,12 @@ func (c *Conn) activeClose() error {
 		if !ok {
 			return fmt.Errorf("failed to recieve ack of fin.")
 		}
+		c.tcb.rcv.NXT += 1
+		c.tcb.TIME_WAIT()
 		if err := c.send(tcp.ACK, nil); err != nil {
 			return err
 		}
-		c.tcb.TIME_WAIT()
+		fmt.Println("[debug] ************888*********************************")
 		c.tcb.startMSL()
 		c.tcb.CLOSED()
 		fmt.Println("[debug] connection closed")
@@ -98,6 +107,7 @@ func (c *Conn) activeClose() error {
 
 func (c *Conn) passiveClose(fin AddressedPacket) error {
 	// close tcb
+	c.tcb.rcv.NXT += 1
 	if c.tcb.state == CLOSED || c.tcb.state == LISTEN || c.tcb.state == SYN_SENT {
 		// drop packet
 		return nil
@@ -114,6 +124,7 @@ func (c *Conn) passiveClose(fin AddressedPacket) error {
 		if err := c.send(tcp.ACK|tcp.FIN, nil); err != nil {
 			return err
 		}
+		c.tcb.finSend = true
 	}
 	if c.tcb.state == FIN_WAIT1 {
 		if c.tcb.finSend {
@@ -196,6 +207,7 @@ func (c *Conn) handle(packet AddressedPacket) error {
 		case ESTABLISHED:
 			fmt.Println("[debug] pass here")
 			c.handleEstablished(packet)
+			c.tcb.rcv.NXT -= 1
 		case FIN_WAIT1:
 			c.handleEstablished(packet)
 			if c.tcb.finSend {
@@ -245,29 +257,31 @@ func (c *Conn) handle(packet AddressedPacket) error {
 	}
 	// eighth check fin bit
 	fmt.Println("[debug] (eight) check FIN")
-	switch c.tcb.state {
-	case CLOSED, LISTEN, SYN_SENT:
-		fmt.Println("[debug] hoge~")
-		// ignore
-	case SYN_RECVD, ESTABLISHED:
-		fmt.Println("[debug] reach handle fin phase")
-		if err := c.passiveClose(packet); err != nil {
-			return err
+	if packet.Packet.Header.OffsetControlFlag.ControlFlag().Fin() {
+		switch c.tcb.state {
+		case CLOSED, LISTEN, SYN_SENT:
+			fmt.Println("[debug] hoge~")
+			// ignore
+		case SYN_RECVD, ESTABLISHED:
+			fmt.Println("[debug] reach handle fin phase")
+			if err := c.passiveClose(packet); err != nil {
+				return err
+			}
+		case FIN_WAIT1:
+			fmt.Println("[debug] fuga")
+			// ack
+		case FIN_WAIT2:
+			fmt.Println("[debug] reach passive close phase")
+			c.closeQueue <- packet
+			//if err := c.handleFin(packet); err != nil {
+			if err := c.passiveClose(packet); err != nil {
+				return err
+			}
+			c.tcb.TIME_WAIT()
+		default:
+			fmt.Println("[debug] stay ", c.tcb.state.String())
+			// stay
 		}
-	case FIN_WAIT1:
-		fmt.Println("[debug] fuga")
-		// ack
-	case FIN_WAIT2:
-		fmt.Println("[debug] reach passive close phase")
-		c.closeQueue <- packet
-		//if err := c.handleFin(packet); err != nil {
-		if err := c.passiveClose(packet); err != nil {
-			return err
-		}
-		c.tcb.TIME_WAIT()
-	default:
-		fmt.Println("[debug] stay ", c.tcb.state.String())
-		// stay
 	}
 	return nil
 }
@@ -292,13 +306,28 @@ func (c *Conn) handleSegment(packet AddressedPacket) error {
 		fmt.Println("[info] tcp segment data is empty.")
 		return nil
 	}
-	c.rcvBuffer = append(c.rcvBuffer, packet.Packet.Data...)
+
+	// check PSH
+	if packet.Packet.Header.OffsetControlFlag.ControlFlag().Psh() {
+		fmt.Println("[info] push to ready queue")
+		fmt.Println(hex.Dump(packet.Packet.Data))
+		c.readyQueue <- packet.Packet.Data
+		fmt.Println("[debug] push to ready queue")
+	} else {
+		c.rcvBuffer = append(c.rcvBuffer, packet.Packet.Data...)
+		if len(c.rcvBuffer) >= cap(c.rcvBuffer) {
+			c.readyQueue <- c.rcvBuffer
+			c.rcvBuffer = make([]byte, 0, window)
+		}
+	}
 	l := len(packet.Packet.Data)
 	c.tcb.rcv.NXT = c.tcb.rcv.NXT + uint32(l)
 	c.tcb.rcv.WND = c.tcb.rcv.WND - uint32(l)
+
 	if err := c.send(tcp.ACK, nil); err != nil {
 		return err
 	}
+	c.tcb.snd.NXT -= 1
 	return nil
 }
 
@@ -314,7 +343,50 @@ func (c *Conn) send(flag tcp.ControlFlag, data []byte) error {
 		return err
 	}
 	c.inner.enqueue(c.tcb.peer.PeerAddr, p)
-	c.tcb.snd.NXT += 1
+	if data == nil {
+		c.tcb.snd.NXT += 1
+	} else {
+		c.tcb.snd.NXT += uint32(len(data))
+	}
+
 	c.tcb.showSeq()
 	return nil
+}
+
+func (c *Conn) Read(b []byte) (int, error) {
+	fmt.Println("[debug] read is called")
+	if !c.tcb.IsReadyRecv() {
+		return 0, fmt.Errorf("invalid state")
+	}
+	return c.read(b)
+}
+
+func (c *Conn) read(b []byte) (int, error) {
+	fmt.Println("[debug] waiting to get from ready queue")
+	buf, ok := <-c.readyQueue
+	if !ok {
+		return 0, fmt.Errorf("failed to read")
+	}
+	fmt.Println("[info] get from ready queue")
+	l := copy(b, buf)
+	return l, nil
+}
+
+func (c *Conn) Write(b []byte) (int, error) {
+	if !c.tcb.IsReadySend() {
+		return 0, fmt.Errorf("invalid state")
+	}
+	return c.write(b)
+}
+
+func (c *Conn) write(b []byte) (int, error) {
+	flag := tcp.ACK
+	if c.pushFlag {
+		flag += tcp.PSH
+	}
+	if err := c.send(flag, b); err != nil {
+		return 0, err
+	}
+	// TODO retransmission handle
+	return len(b), nil
 }

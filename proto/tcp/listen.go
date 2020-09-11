@@ -142,8 +142,11 @@ func (l *Listener) getConnection() (*Conn, error) {
 		Peer:       l.tcb.peer,
 		queue:      make(chan AddressedPacket, 100),
 		closeQueue: make(chan AddressedPacket, 1),
+		rcvBuffer:  make([]byte, window),
+		readyQueue: make(chan []byte, 10),
 		inner:      l.inner,
 	}
+	conn.pushFlag = true
 	// entry connection list
 	l.inner.connections[conn.Peer.Port] = conn
 	// delete from listener list
