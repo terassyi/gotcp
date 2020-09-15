@@ -47,6 +47,8 @@ func (t *Tcp) dial(addr string, peerport int) (*dialer, error) {
 
 func (d *dialer) establish() error {
 	// tcp active open
+	d.tcb.mutex.RLock()
+	defer d.tcb.mutex.RUnlock()
 	p, err := d.tcb.activeOpen()
 	if err != nil {
 		return err

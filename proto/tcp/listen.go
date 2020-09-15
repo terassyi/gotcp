@@ -65,6 +65,8 @@ func (l *Listener) Accept() (*Conn, error) {
 }
 
 func (l *Listener) establish() error {
+	l.tcb.mutex.RLock()
+	defer l.tcb.mutex.RUnlock()
 	syn, ok := <-l.queue
 	if !ok {
 		return fmt.Errorf("failed to recv syn from syn queue")

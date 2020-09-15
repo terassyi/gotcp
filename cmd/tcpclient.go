@@ -106,7 +106,7 @@ func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 	}
 
 	message := "Hello from gotcp client"
-	time.Sleep(time.Second * 10)
+
 	l, err := conn.Write([]byte(message))
 	if err != nil {
 		fmt.Println("[error] ", err)
@@ -115,7 +115,7 @@ func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 	fmt.Printf("[info] message sent %dbytes\n", l)
 	time.Sleep(time.Second * 2)
 
-	buf := make([]byte, 20)
+	buf := make([]byte, 30)
 	l, err = conn.Read(buf)
 	if err != nil {
 		fmt.Println("[error] ", err)
@@ -123,11 +123,9 @@ func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 	}
 	fmt.Println("[info] message recv: ", string(buf))
 
-	time.Sleep(time.Second * 10)
 	if err := conn.Close(); err != nil {
 		fmt.Printf("[error] %s", err)
 		return subcommands.ExitFailure
 	}
-	time.Sleep(time.Second * 10)
 	return subcommands.ExitSuccess
 }

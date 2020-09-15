@@ -50,6 +50,8 @@ func (c *Conn) Close() error {
 
 func (c *Conn) activeClose() error {
 	// close tcb
+	c.tcb.mutex.RLock()
+	defer c.tcb.mutex.RUnlock()
 	if c.tcb.state != ESTABLISHED && c.tcb.state != CLOSE_WAIT && c.tcb.state != SYN_RECVD {
 		return fmt.Errorf("invalid state")
 	}
@@ -77,10 +79,12 @@ func (c *Conn) activeClose() error {
 				return fmt.Errorf("failed to recieve ack of fin")
 			}
 			c.tcb.TIME_WAIT()
+			fmt.Println("[info] start timer")
 			c.tcb.startMSL()
 			c.tcb.CLOSED()
 			return nil
 		}
+		// got ack
 		fmt.Println("[info] transmission control block state is FIN-WAIT2")
 		c.tcb.FIN_WAIT2()
 		// wait fin
@@ -88,7 +92,8 @@ func (c *Conn) activeClose() error {
 		if !ok {
 			return fmt.Errorf("failed to recieve ack of fin.")
 		}
-		c.tcb.rcv.NXT += 1
+
+		fmt.Println(1)
 		c.tcb.TIME_WAIT()
 		if err := c.send(tcp.ACK, nil); err != nil {
 			return err
@@ -96,17 +101,21 @@ func (c *Conn) activeClose() error {
 		fmt.Println("[debug] ************888*********************************")
 		c.tcb.startMSL()
 		c.tcb.CLOSED()
+		delete(c.inner.connections, c.Peer.Port)
 		fmt.Println("[debug] connection closed")
 
 	} else {
 		fmt.Println("[info] transmission control block state is LAST-ACK")
 		c.tcb.CLOSE_WAIT()
 	}
+	fmt.Println("[debug] fin phase finished.")
 	return nil
 }
 
 func (c *Conn) passiveClose(fin AddressedPacket) error {
 	// close tcb
+	c.tcb.mutex.RLock()
+	defer c.tcb.mutex.RUnlock()
 	c.tcb.rcv.NXT += 1
 	if c.tcb.state == CLOSED || c.tcb.state == LISTEN || c.tcb.state == SYN_SENT {
 		// drop packet
@@ -149,12 +158,13 @@ func (c *Conn) passiveClose(fin AddressedPacket) error {
 		c.tcb.startMSL()
 		c.tcb.startMSL()
 	}
+	delete(c.inner.connections, c.Peer.Port)
 	return nil
 }
 
 func (c *Conn) handle(packet AddressedPacket) error {
 	// handle incoming segment
-	fmt.Println("[info] handling connection, handling incoming segment.")
+
 	// first check sequence number
 	/*
 	   Segment Receive  Test
@@ -217,14 +227,21 @@ func (c *Conn) handle(packet AddressedPacket) error {
 		case FIN_WAIT2:
 			c.handleEstablished(packet)
 			c.tcb.rcv.NXT -= 1
-			if len(c.tcb.retrans) == 0 {
-				c.tcb.TIME_WAIT()
+			//if len(c.tcb.retrans) == 0 {
+			//	fmt.Println(6)
+			//	c.tcb.TIME_WAIT()
+			//}
+			// ack of fin
+			if packet.Packet.Data == nil {
+				fmt.Println("[debug] hogehogehogeohogeohogoegoh")
+				c.closeQueue <- packet
 			}
 		case CLOSE_WAIT:
 			c.handleEstablished(packet)
 		case CLOSING:
 			c.handleEstablished(packet)
 			if c.tcb.finSend {
+				fmt.Println(2)
 				c.tcb.TIME_WAIT()
 			}
 		case LAST_ACK:
@@ -277,6 +294,7 @@ func (c *Conn) handle(packet AddressedPacket) error {
 			if err := c.passiveClose(packet); err != nil {
 				return err
 			}
+			fmt.Println(4)
 			c.tcb.TIME_WAIT()
 		default:
 			fmt.Println("[debug] stay ", c.tcb.state.String())

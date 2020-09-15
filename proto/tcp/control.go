@@ -18,7 +18,7 @@ type controlBlock struct {
 	retrans chan AddressedPacket
 	Window  []byte
 	finSend bool
-	Mutex   *sync.RWMutex
+	mutex   *sync.RWMutex
 }
 
 // type CbTable []*ControlBlock
@@ -355,17 +355,22 @@ func (cb *controlBlock) IsReadySend() bool {
 }
 
 func (cb *controlBlock) startMSL() {
-	time.Sleep(time.Minute)
+	time.Sleep(time.Second * 10)
 }
 
 func (cb *controlBlock) showSeq() {
-	fmt.Printf("[info] <rcv.nxt=%d snd.nxt=%d\n", cb.rcv.NXT, cb.snd.NXT)
+	fmt.Printf("[info] <rcv.nxt=%d snd.nxt=%d>\n", cb.rcv.NXT, cb.snd.NXT)
+}
+
+func (cb *controlBlock) block() error {
+
+	return nil
 }
 
 //func (cb *ControlBlock) buildWindow() []byte {
 //	buf := make([]byte, 65535)
-//	cb.Mutex.Lock()
-//	defer cb.Mutex.Unlock()
+//	cb.mutex.Lock()
+//	defer cb.mutex.Unlock()
 //	num := len(cb.Window)
 //	for i := 0; i < num; i++ {
 //		b := <-cb.Window
@@ -383,7 +388,7 @@ func NewControlBlock(peer *port.Peer) *controlBlock {
 		finSend: false,
 		retrans: make(chan AddressedPacket, 100),
 		Window:  make([]byte, 0, 65535),
-		Mutex:   &sync.RWMutex{},
+		mutex:   &sync.RWMutex{},
 	}
 }
 

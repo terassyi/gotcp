@@ -12,7 +12,6 @@ import (
 	"github.com/terassyi/gotcp/proto/icmp"
 	"github.com/terassyi/gotcp/proto/ipv4"
 	"github.com/terassyi/gotcp/proto/tcp"
-	"time"
 )
 
 type TcpServerCommand struct {
@@ -106,24 +105,33 @@ func (s *TcpServerCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 		fmt.Printf("[error] %v", err)
 		return subcommands.ExitFailure
 	}
-	time.Sleep(time.Second * 2)
-	buf := make([]byte, 20)
-	l, err := conn.Read(buf)
+
+	var errChan chan error
+
+	go func() {
+		buf := make([]byte, 30)
+		l, err := conn.Read(buf)
+		if err != nil {
+			fmt.Println("[error] ", err)
+			errChan <- err
+			return
+		}
+		fmt.Println("[info] message recv: ", string(buf))
+
+		message := "Hello from gotcp server"
+		l, err = conn.Write([]byte(message))
+		if err != nil {
+			fmt.Println("[error] ", err)
+			errChan <- err
+			return
+		}
+		fmt.Printf("[info] message send %dbytes\n", l)
+
+	}()
+
+	err = <-errChan
 	if err != nil {
-		fmt.Println("[error] ", err)
 		return subcommands.ExitFailure
 	}
-	fmt.Println("[info] message recv: ", string(buf))
-
-	time.Sleep(time.Second * 10)
-	message := "Hello from gotcp server"
-	l, err = conn.Write([]byte(message))
-	if err != nil {
-		fmt.Println("[error] ", err)
-		return subcommands.ExitFailure
-	}
-	fmt.Printf("[info] message send %dbytes\n", l)
-
-	time.Sleep(time.Second * 20)
 	return subcommands.ExitSuccess
 }
