@@ -1,8 +1,8 @@
 package tcp
 
 import (
-	"encoding/hex"
 	"fmt"
+	"github.com/terassyi/gotcp/logger"
 	"github.com/terassyi/gotcp/packet/tcp"
 	"github.com/terassyi/gotcp/proto/port"
 )
@@ -16,13 +16,14 @@ type Conn struct {
 	readyQueue chan []byte
 	inner      *Tcp
 	pushFlag   bool
+	logger     *logger.Logger
 }
 
 const window int = 1024
 
-func newConn(peer *port.Peer) (*Conn, error) {
+func newConn(peer *port.Peer, debug bool) (*Conn, error) {
 	conn := &Conn{
-		tcb:        NewControlBlock(peer),
+		tcb:        NewControlBlock(peer, debug),
 		Peer:       peer,
 		queue:      make(chan AddressedPacket, 100),
 		rcvBuffer:  make([]byte, 0, window),
@@ -60,7 +61,6 @@ func (c *Conn) activeClose() error {
 	}
 	c.tcb.finSend = true
 	if c.tcb.state == SYN_RECVD || c.tcb.state == ESTABLISHED {
-		fmt.Println("[info] transmission control block state is FIN-WAIT1")
 		c.tcb.FIN_WAIT1()
 		// wait ack of fin
 		p, ok := <-c.closeQueue
@@ -79,13 +79,13 @@ func (c *Conn) activeClose() error {
 				return fmt.Errorf("failed to recieve ack of fin")
 			}
 			c.tcb.TIME_WAIT()
-			fmt.Println("[info] start timer")
+			c.logger.Debug("start timer")
 			c.tcb.startMSL()
 			c.tcb.CLOSED()
 			return nil
 		}
 		// got ack
-		fmt.Println("[info] transmission control block state is FIN-WAIT2")
+
 		c.tcb.FIN_WAIT2()
 		// wait fin
 		_, ok = <-c.closeQueue
@@ -93,22 +93,18 @@ func (c *Conn) activeClose() error {
 			return fmt.Errorf("failed to recieve ack of fin.")
 		}
 
-		fmt.Println(1)
 		c.tcb.TIME_WAIT()
 		if err := c.send(tcp.ACK, nil); err != nil {
 			return err
 		}
-		fmt.Println("[debug] ************888*********************************")
 		c.tcb.startMSL()
 		c.tcb.CLOSED()
 		delete(c.inner.connections, c.Peer.Port)
-		fmt.Println("[debug] connection closed")
+		c.logger.Info("connection closed.")
 
 	} else {
-		fmt.Println("[info] transmission control block state is LAST-ACK")
 		c.tcb.CLOSE_WAIT()
 	}
-	fmt.Println("[debug] fin phase finished.")
 	return nil
 }
 
@@ -122,13 +118,11 @@ func (c *Conn) passiveClose(fin AddressedPacket) error {
 		return nil
 	}
 	if c.tcb.state == SYN_RECVD || c.tcb.state == ESTABLISHED {
-		fmt.Println("[info] transmission control block state is CLOSE-WAIT")
 		c.tcb.CLOSE_WAIT()
 		if err := c.send(tcp.ACK, nil); err != nil {
 			return err
 		}
 		c.tcb.snd.NXT -= 1
-		fmt.Println("[debug] hogehoge")
 		c.tcb.LAST_ACK()
 		if err := c.send(tcp.ACK|tcp.FIN, nil); err != nil {
 			return err
@@ -137,17 +131,14 @@ func (c *Conn) passiveClose(fin AddressedPacket) error {
 	}
 	if c.tcb.state == FIN_WAIT1 {
 		if c.tcb.finSend {
-			fmt.Println("[info] transmission control block state is TIME-WAIT")
 			c.tcb.TIME_WAIT()
 			// start 2MSL
 			// delete TCB
 		} else {
-			fmt.Println("[info] transmission control block state is CLOSING")
 			c.tcb.CLOSING()
 		}
 	}
 	if c.tcb.state == FIN_WAIT2 {
-		fmt.Println("[info] transmission control block state is TIME-WAIT")
 		c.tcb.TIME_WAIT()
 	}
 	if c.tcb.state == CLOSING || c.tcb.state == LAST_ACK {
@@ -180,28 +171,22 @@ func (c *Conn) handle(packet AddressedPacket) error {
 	     >0      >0     RCV.NXT =< SEG.SEQ < RCV.NXT+RCV.WND
 	                 or RCV.NXT =< SEG.SEQ+SEG.LEN-1 < RCV.NXT+RCV.WND
 	*/
-	fmt.Println("[debug] (first) check sequence number")
 	if c.tcb.rcv.WND == 0 || packet.Packet.Header.Sequence != c.tcb.rcv.NXT {
 		//if err := c.send(tcp.ACK, nil); err != nil {
 		//	return err
 		//}
-		fmt.Println("[debug] packet seq num = ", packet.Packet.Header.Sequence)
-		fmt.Println("[debug] recv nxt = ", c.tcb.rcv.NXT)
 		return fmt.Errorf("recieve window is zero")
 	}
 
 	// second check the RST bit,
-	fmt.Println("[debug] (second) check RST")
 	if packet.Packet.Header.OffsetControlFlag.ControlFlag().Rst() {
 		c.tcb.CLOSED()
 		return nil
 	}
 	// third check security and precedence
-	fmt.Println("[debug] (third) check security and precedence nop")
 	// TODO
 
 	// fourth, check the SYN bit
-	fmt.Println("[debug] (fourth) check SYN")
 	if packet.Packet.Header.OffsetControlFlag.ControlFlag().Syn() {
 		c.tcb.rcv.NXT += 1
 		if err := c.send(tcp.RST, nil); err != nil {
@@ -211,11 +196,9 @@ func (c *Conn) handle(packet AddressedPacket) error {
 		return nil
 	}
 	// fifth check the ACK field
-	fmt.Println("[debug] (fifth) check ACK")
 	if packet.Packet.Header.OffsetControlFlag.ControlFlag().Ack() {
 		switch c.tcb.state {
 		case ESTABLISHED:
-			fmt.Println("[debug] pass here")
 			c.handleEstablished(packet)
 			c.tcb.rcv.NXT -= 1
 		case FIN_WAIT1:
@@ -228,12 +211,10 @@ func (c *Conn) handle(packet AddressedPacket) error {
 			c.handleEstablished(packet)
 			c.tcb.rcv.NXT -= 1
 			//if len(c.tcb.retrans) == 0 {
-			//	fmt.Println(6)
 			//	c.tcb.TIME_WAIT()
 			//}
 			// ack of fin
 			if packet.Packet.Data == nil {
-				fmt.Println("[debug] hogehogehogeohogeohogoegoh")
 				c.closeQueue <- packet
 			}
 		case CLOSE_WAIT:
@@ -241,7 +222,6 @@ func (c *Conn) handle(packet AddressedPacket) error {
 		case CLOSING:
 			c.handleEstablished(packet)
 			if c.tcb.finSend {
-				fmt.Println(2)
 				c.tcb.TIME_WAIT()
 			}
 		case LAST_ACK:
@@ -259,11 +239,9 @@ func (c *Conn) handle(packet AddressedPacket) error {
 		return fmt.Errorf("ack field is not set")
 	}
 	// sixth check the URG bit
-	fmt.Println("[debug] (sixth) check URG nop")
 	// TODO
 
 	// seventh process the segment text
-	fmt.Println("[debug] (seventh) process the segment text")
 	switch c.tcb.state {
 	case ESTABLISHED, FIN_WAIT1, FIN_WAIT2:
 		if err := c.handleSegment(packet); err != nil {
@@ -273,31 +251,24 @@ func (c *Conn) handle(packet AddressedPacket) error {
 		// ignore the segment
 	}
 	// eighth check fin bit
-	fmt.Println("[debug] (eight) check FIN")
 	if packet.Packet.Header.OffsetControlFlag.ControlFlag().Fin() {
 		switch c.tcb.state {
 		case CLOSED, LISTEN, SYN_SENT:
-			fmt.Println("[debug] hoge~")
 			// ignore
 		case SYN_RECVD, ESTABLISHED:
-			fmt.Println("[debug] reach handle fin phase")
 			if err := c.passiveClose(packet); err != nil {
 				return err
 			}
 		case FIN_WAIT1:
-			fmt.Println("[debug] fuga")
 			// ack
 		case FIN_WAIT2:
-			fmt.Println("[debug] reach passive close phase")
 			c.closeQueue <- packet
 			//if err := c.handleFin(packet); err != nil {
 			if err := c.passiveClose(packet); err != nil {
 				return err
 			}
-			fmt.Println(4)
 			c.tcb.TIME_WAIT()
 		default:
-			fmt.Println("[debug] stay ", c.tcb.state.String())
 			// stay
 		}
 	}
@@ -321,16 +292,12 @@ func (c *Conn) handleEstablished(packet AddressedPacket) {
 
 func (c *Conn) handleSegment(packet AddressedPacket) error {
 	if packet.Packet.Data == nil || len(packet.Packet.Data) == 0 {
-		fmt.Println("[info] tcp segment data is empty.")
 		return nil
 	}
 
 	// check PSH
 	if packet.Packet.Header.OffsetControlFlag.ControlFlag().Psh() {
-		fmt.Println("[info] push to ready queue")
-		fmt.Println(hex.Dump(packet.Packet.Data))
 		c.readyQueue <- packet.Packet.Data
-		fmt.Println("[debug] push to ready queue")
 	} else {
 		c.rcvBuffer = append(c.rcvBuffer, packet.Packet.Data...)
 		if len(c.rcvBuffer) >= cap(c.rcvBuffer) {
@@ -367,12 +334,11 @@ func (c *Conn) send(flag tcp.ControlFlag, data []byte) error {
 		c.tcb.snd.NXT += uint32(len(data))
 	}
 
-	c.tcb.showSeq()
+	//c.tcb.showSeq()
 	return nil
 }
 
 func (c *Conn) Read(b []byte) (int, error) {
-	fmt.Println("[debug] read is called")
 	if !c.tcb.IsReadyRecv() {
 		return 0, fmt.Errorf("invalid state")
 	}
@@ -380,12 +346,10 @@ func (c *Conn) Read(b []byte) (int, error) {
 }
 
 func (c *Conn) read(b []byte) (int, error) {
-	fmt.Println("[debug] waiting to get from ready queue")
 	buf, ok := <-c.readyQueue
 	if !ok {
 		return 0, fmt.Errorf("failed to read")
 	}
-	fmt.Println("[info] get from ready queue")
 	l := copy(b, buf)
 	return l, nil
 }

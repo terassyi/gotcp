@@ -3,11 +3,11 @@ package arp
 import (
 	"fmt"
 	"github.com/terassyi/gotcp/ioctl"
+	"github.com/terassyi/gotcp/logger"
 	"github.com/terassyi/gotcp/packet/arp"
 	"github.com/terassyi/gotcp/packet/ethernet"
 	"github.com/terassyi/gotcp/packet/ipv4"
 	"github.com/terassyi/gotcp/proto"
-	"log"
 )
 
 // global variable
@@ -19,13 +19,15 @@ type Arp struct {
 	IpAddress  *ipv4.IPAddress
 	MacAddress *ethernet.HardwareAddress
 	Updated    chan struct{}
+	logger     *logger.Logger
 }
 
-func New(table *Table) *Arp {
+func New(table *Table, debug bool) *Arp {
 	ap := &Arp{
 		ProtocolBuffer: proto.NewProtocolBuffer(),
 		Table:          table,
 		Updated:        make(chan struct{}),
+		logger:         logger.New(debug, "arp"),
 	}
 	return ap
 }
@@ -65,16 +67,16 @@ func (ap *Arp) Handle() {
 			//fmt.Println("[info] receive arp packet")
 			packet, err := arp.New(buf)
 			if err != nil {
-				log.Printf("arp packet serialize error: %v", err)
+				ap.logger.Error(err)
 				return
 			}
 			//packet.Show()
 			if err := ap.manage(packet); err != nil {
-				log.Println(err)
+				ap.logger.Error(err)
 				return
 			}
 		} else {
-			log.Println("failed to recv")
+			ap.logger.Error("failed to recv")
 		}
 	}
 }
@@ -104,11 +106,13 @@ func (ap *Arp) reply(packet *arp.Packet) error {
 		if err := ap.Table.Insert(macaddr, ipaddr); err != nil {
 			return err
 		}
-		ap.Table.Show()
+		if ap.logger.DebugMode() {
+			//ap.Table.Show()
+		}
 		ap.Updated <- struct{}{}
 		return nil
 	}
-	ap.Table.Show()
+	//ap.Table.Show()
 	ok, err := ap.Table.Update(macaddr, ipaddr)
 	if err != nil {
 		return err

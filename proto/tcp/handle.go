@@ -1,7 +1,7 @@
 package tcp
 
 import (
-	"fmt"
+	"github.com/terassyi/gotcp/logger"
 	"github.com/terassyi/gotcp/packet/ipv4"
 	"github.com/terassyi/gotcp/packet/tcp"
 	"github.com/terassyi/gotcp/proto"
@@ -18,6 +18,7 @@ type Tcp struct {
 	dialers     map[int]*dialer
 	connections map[int]*Conn
 	mutex       *sync.RWMutex
+	logger      *logger.Logger
 }
 
 type AddressedPacket struct {
@@ -25,7 +26,7 @@ type AddressedPacket struct {
 	Address *ipv4.IPAddress
 }
 
-func New() (*Tcp, error) {
+func New(debug bool) (*Tcp, error) {
 	table, err := port.New()
 	if err != nil {
 		return nil, err
@@ -39,6 +40,7 @@ func New() (*Tcp, error) {
 		dialers:        make(map[int]*dialer),
 		connections:    make(map[int]*Conn),
 		mutex:          &sync.RWMutex{},
+		logger:         logger.New(debug, "tcp"),
 	}, nil
 }
 
@@ -47,7 +49,6 @@ func (t *Tcp) Recv(buf []byte) {
 }
 
 func (t *Tcp) enqueue(addr *ipv4.IPAddress, packet *tcp.Packet) {
-	fmt.Println("[debug] enqueue to tcp send routine")
 	t.SendQueue <- AddressedPacket{
 		Packet:  packet,
 		Address: addr,
@@ -58,13 +59,11 @@ func (t *Tcp) Handle() {
 	for {
 		buf, ok := <-t.Buffer
 		if !ok {
-			fmt.Println("[error] failed to recv buffer.")
 			continue
 		}
-		fmt.Println("[info] recv tcp packet.")
 		packet, err := tcp.New(buf)
 		if err != nil {
-			fmt.Printf("[error] tcp packet serialize error: %v\n", err)
+			t.logger.Errorf("tcp packet serialize error: %v\n", err)
 			continue
 		}
 		packet.Show()
@@ -75,10 +74,12 @@ func (t *Tcp) HandlePacket(src *ipv4.IPAddress, buf []byte) {
 
 	packet, err := tcp.New(buf)
 	if err != nil {
-		fmt.Printf("[error] tcp packet serialize error: %v\n", err)
+		t.logger.Errorf("tcp packet serialize error: %v\n", err)
 		return
 	}
-	packet.Show()
+	//if t.logger.DebugMode() {
+	//packet.Show()
+	//}
 
 	// handle packet
 	// listener
@@ -108,13 +109,13 @@ func (t *Tcp) HandlePacket(src *ipv4.IPAddress, buf []byte) {
 			Packet:  packet,
 			Address: src,
 		}); err != nil {
-			fmt.Println("[error] ", err)
+			t.logger.Error(err)
 			return
 		}
 		return
 	} else {
-		fmt.Println("[info] can't find connection")
+
 	}
-	fmt.Println("[info] received packet is not handled. invalid peer.")
+	t.logger.Info("received packet is not handled. invalid peer.")
 	return
 }

@@ -17,7 +17,7 @@ func (t *Tcp) Listen(addr string, port int) (*Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("[info] start to listen")
+	t.logger.Info("start to listen")
 	t.mutex.RLock()
 	defer t.mutex.RUnlock()
 	l, err := t.listen(a, port)
@@ -48,8 +48,7 @@ func (t *Tcp) bind(port int) (*controlBlock, error) {
 	if err != nil {
 		return nil, err
 	}
-	cb := NewControlBlock(peer)
-	fmt.Println("[info] bind port=", port)
+	cb := NewControlBlock(peer, t.logger.DebugMode())
 	if err := cb.passiveOpen(); err != nil {
 		return nil, err
 	}
@@ -106,7 +105,6 @@ func (l *Listener) establish() error {
 	//l.tcb.snd.NXT += 1
 	l.tcb.showSeq()
 	l.tcb.SYN_RECVD()
-	fmt.Println("[info] transmission control block state is SYN_RECVD")
 	// wait ack
 	ack, ok := <-l.queue
 	if !ok {
@@ -125,7 +123,6 @@ func (l *Listener) establish() error {
 	}
 	//l.tcb.rcv.NXT += 1
 	if l.tcb.snd.UNA <= ack.Packet.Header.Ack && ack.Packet.Header.Ack <= l.tcb.snd.NXT {
-		fmt.Println("[info] status move to ESTABLISHED")
 		l.tcb.ESTABLISHED()
 	} else {
 		rep, err := tcp.Build(syn.Packet.Header.DestinationPort, syn.Packet.Header.SourcePort,

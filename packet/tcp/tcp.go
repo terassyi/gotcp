@@ -47,7 +47,6 @@ func (of OffsetControlFlag) Offset() int {
 
 func (of OffsetControlFlag) changeHeaderLength(diff int) OffsetControlFlag {
 	now := of.Offset()
-	fmt.Printf("now = %d diff = %d\n", of.Offset(), diff)
 	return newOffsetControlFlag(uint8(now+diff), of.ControlFlag())
 }
 

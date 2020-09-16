@@ -2,13 +2,13 @@ package ipv4
 
 import (
 	"fmt"
+	"github.com/terassyi/gotcp/logger"
 	etherframe "github.com/terassyi/gotcp/packet/ethernet"
 	"github.com/terassyi/gotcp/packet/ipv4"
 	"github.com/terassyi/gotcp/proto"
 	"github.com/terassyi/gotcp/proto/ethernet"
 	"github.com/terassyi/gotcp/proto/icmp"
 	"github.com/terassyi/gotcp/proto/tcp"
-	"log"
 	"syscall"
 	"unsafe"
 )
@@ -19,9 +19,10 @@ type Ipv4 struct {
 	Address *ipv4.IPAddress
 	Icmp    *icmp.Icmp
 	Tcp     *tcp.Tcp
+	logger  *logger.Logger
 }
 
-func New(eth *ethernet.Ethernet, i *icmp.Icmp, tcp *tcp.Tcp) (*Ipv4, error) {
+func New(eth *ethernet.Ethernet, i *icmp.Icmp, tcp *tcp.Tcp, debug bool) (*Ipv4, error) {
 	addr, err := siocgifaddr(eth.Name())
 	if err != nil {
 		return nil, err
@@ -37,14 +38,15 @@ func New(eth *ethernet.Ethernet, i *icmp.Icmp, tcp *tcp.Tcp) (*Ipv4, error) {
 		Address:        a,
 		Icmp:           i,
 		Tcp:            tcp,
+		logger:         logger.New(debug, "ipv4"),
 	}, nil
 }
 
 func (ip *Ipv4) Show() {
-	fmt.Println("------ip interface ------")
-	fmt.Printf("name: %v\n", ip.Eth.Name())
-	fmt.Printf("ip addr: %v\n", ip.Address.String())
-	fmt.Printf("mac addr: %v\n", ip.Eth.Address().String())
+	ip.logger.Info("------ip interface ------")
+	ip.logger.Info("name: %v\n", ip.Eth.Name())
+	ip.logger.Info("ip addr: %v\n", ip.Address.String())
+	ip.logger.Info("mac addr: %v\n", ip.Eth.Address().String())
 }
 
 func (ip *Ipv4) Recv(buf []byte) {
@@ -57,13 +59,11 @@ func (ip *Ipv4) Handle() {
 		if ok {
 			packet, err := ipv4.New(buf)
 			if err != nil {
-				log.Printf("ipv4 packet serialize error: %v", err)
+				ip.logger.Errorf("ipv4 packet serialize error: %v", err)
 				return
 			}
-			//packet.Header.Show()
-			fmt.Printf("[info] %s\n", packet.Direction())
 			if err := ip.manage(packet); err != nil {
-				log.Println(err)
+				ip.logger.Error(err)
 				return
 			}
 		}
@@ -73,13 +73,11 @@ func (ip *Ipv4) Handle() {
 func (ip *Ipv4) HandlePacket(buf []byte) {
 	packet, err := ipv4.New(buf)
 	if err != nil {
-		log.Printf("ipv4 packet serialize error: %v", err)
+		ip.logger.Errorf("ipv4 packet serialize error: %v", err)
 		return
 	}
-	//packet.Header.Show()
-	fmt.Printf("[info] %s\n", packet.Direction())
 	if err := ip.manage(packet); err != nil {
-		log.Println(err)
+		ip.logger.Error(err)
 		return
 	}
 }
@@ -124,19 +122,18 @@ func (ip *Ipv4) TcpSend() {
 		//fmt.Println("[info] waiting tcp packet to send.")
 		addrPacket, ok := <-ip.Tcp.SendQueue
 		if !ok {
-			fmt.Println("failed to handle tcp packet for sending")
+			ip.logger.Error("failed to handle tcp packet for sending")
 			continue
 		}
-		addrPacket.Packet.Show()
 		data, err := addrPacket.Packet.Serialize()
 		if err != nil {
-			fmt.Println(err)
+			ip.logger.Error(err)
 		}
-		l, err := ip.Send(*addrPacket.Address, ipv4.IPTCPProtocol, data)
+		_, err = ip.Send(*addrPacket.Address, ipv4.IPTCPProtocol, data)
 		if err != nil {
-			fmt.Println(err)
+			ip.logger.Error(err)
 		}
-		fmt.Printf("[info] %dbytes tcp packet sent\n", l)
+		//ip.logger.Debugf("[info] %dbytes tcp packet sent\n", l)
 	}
 }
 

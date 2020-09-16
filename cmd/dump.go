@@ -42,20 +42,19 @@ func (d *DumpCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...interface
 	}
 	defer iface.Close()
 
-	arpProtocol := arp.New(arp.NewTable())
+	arpProtocol := arp.New(arp.NewTable(), false)
 	e, err := eth.New(iface, arpProtocol)
-	icmpProtocol := icmp.New()
+	icmpProtocol := icmp.New(false)
 
-	tcpProtocol, err := tcp.New()
+	tcpProtocol, err := tcp.New(false)
 	if err != nil {
 		return subcommands.ExitFailure
 	}
-	ipv4Protocol, err := ipv4.New(e, icmpProtocol, tcpProtocol)
+	ipv4Protocol, err := ipv4.New(e, icmpProtocol, tcpProtocol, false)
 	if err != nil {
 		fmt.Println(err)
 		return subcommands.ExitFailure
 	}
-	fmt.Println("start to recv")
 
 	ipv4Protocol.Show()
 	go arpProtocol.Handle()

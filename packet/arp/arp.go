@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/terassyi/gotcp/packet/ethernet"
-	"log"
 )
 
 type Header struct {
@@ -102,9 +101,6 @@ func (arp *Packet) Serialize() ([]byte, error) {
 
 func (arp *Packet) Handle() {
 	arp.Show()
-	if arp.Header.HardwareType != HARDWARE_ETHERNET {
-		log.Printf("unknown hardware type")
-	}
 }
 
 func printHadrwareAddress(hwaddr []byte) string {

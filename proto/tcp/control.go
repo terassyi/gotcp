@@ -2,6 +2,7 @@ package tcp
 
 import (
 	"fmt"
+	"github.com/terassyi/gotcp/logger"
 	"github.com/terassyi/gotcp/packet/tcp"
 	"github.com/terassyi/gotcp/proto/port"
 	"math/rand"
@@ -19,6 +20,7 @@ type controlBlock struct {
 	Window  []byte
 	finSend bool
 	mutex   *sync.RWMutex
+	logger  *logger.Logger
 }
 
 // type CbTable []*ControlBlock
@@ -73,46 +75,57 @@ func (s state) String() string {
 
 func (cb *controlBlock) CLOSED() {
 	cb.state = CLOSED
+	cb.logger.Debug(cb.state.String())
 }
 
 func (cb *controlBlock) LISTEN() {
 	cb.state = LISTEN
+	cb.logger.Debug(cb.state.String())
 }
 
 func (cb *controlBlock) SYN_SENT() {
 	cb.state = SYN_SENT
+	cb.logger.Debug(cb.state.String())
 }
 
 func (cb *controlBlock) SYN_RECVD() {
 	cb.state = SYN_RECVD
+	cb.logger.Debug(cb.state.String())
 }
 
 func (cb *controlBlock) ESTABLISHED() {
 	cb.state = ESTABLISHED
+	cb.logger.Debug(cb.state.String())
 }
 
 func (cb *controlBlock) FIN_WAIT1() {
 	cb.state = FIN_WAIT1
+	cb.logger.Debug(cb.state.String())
 }
 
 func (cb *controlBlock) FIN_WAIT2() {
 	cb.state = FIN_WAIT2
+	cb.logger.Debug(cb.state.String())
 }
 
 func (cb *controlBlock) CLOSING() {
 	cb.state = CLOSING
+	cb.logger.Debug(cb.state.String())
 }
 
 func (cb *controlBlock) TIME_WAIT() {
 	cb.state = TIME_WAIT
+	cb.logger.Debug(cb.state.String())
 }
 
 func (cb *controlBlock) CLOSE_WAIT() {
 	cb.state = CLOSE_WAIT
+	cb.logger.Debug(cb.state.String())
 }
 
 func (cb *controlBlock) LAST_ACK() {
 	cb.state = LAST_ACK
+	cb.logger.Debug(cb.state.String())
 }
 
 func (cb *controlBlock) activeOpen() (*tcp.Packet, error) {
@@ -136,7 +149,6 @@ func (cb *controlBlock) activeOpen() (*tcp.Packet, error) {
 	}
 	packet.AddOption(tcp.Options{tcp.MaxSegmentSize(1460), tcp.SACKPermitted{}, tcp.WindowScale(7), *t})
 	cb.SYN_SENT()
-	fmt.Println("[info] transmission control block state is SYN_SENT")
 	return packet, nil
 }
 
@@ -147,7 +159,6 @@ func (cb *controlBlock) passiveOpen() error {
 		return fmt.Errorf("invalid state: %v", cb.state.String())
 	}
 	cb.LISTEN()
-	fmt.Println("[info] transmission control block state is LISTEN")
 	return nil
 }
 
@@ -199,7 +210,6 @@ func (cb *controlBlock) HandleEvent(packet *tcp.Packet) (*tcp.Packet, error) {
 			cb.snd.NXT = cb.snd.ISS + 1
 			cb.snd.UNA = cb.snd.ISS
 			cb.SYN_RECVD()
-			fmt.Println("[info] transmission control block state is SYN_RECVD")
 			// <SEQ=ISS><ACK=RCV.NXT><CTL=SYN,ACK>
 			return tcp.Build(uint16(cb.peer.Port), uint16(cb.peer.PeerPort), cb.snd.ISS, cb.rcv.NXT, tcp.SYN|tcp.ACK, windowZero, 0, nil)
 		}
@@ -358,8 +368,8 @@ func (cb *controlBlock) startMSL() {
 	time.Sleep(time.Second * 10)
 }
 
-func (cb *controlBlock) showSeq() {
-	fmt.Printf("[info] <rcv.nxt=%d snd.nxt=%d>\n", cb.rcv.NXT, cb.snd.NXT)
+func (cb *controlBlock) showSeq() string {
+	return fmt.Sprintf("<rcv.nxt=%d snd.nxt=%d>\n", cb.rcv.NXT, cb.snd.NXT)
 }
 
 func (cb *controlBlock) block() error {
@@ -367,19 +377,7 @@ func (cb *controlBlock) block() error {
 	return nil
 }
 
-//func (cb *ControlBlock) buildWindow() []byte {
-//	buf := make([]byte, 65535)
-//	cb.mutex.Lock()
-//	defer cb.mutex.Unlock()
-//	num := len(cb.Window)
-//	for i := 0; i < num; i++ {
-//		b := <-cb.Window
-//		buf = append(buf, b...)
-//	}
-//	return buf
-//}
-
-func NewControlBlock(peer *port.Peer) *controlBlock {
+func NewControlBlock(peer *port.Peer, debug bool) *controlBlock {
 	return &controlBlock{
 		peer:    peer,
 		state:   CLOSED,
@@ -389,6 +387,7 @@ func NewControlBlock(peer *port.Peer) *controlBlock {
 		retrans: make(chan AddressedPacket, 100),
 		Window:  make([]byte, 0, 65535),
 		mutex:   &sync.RWMutex{},
+		logger:  logger.New(debug, "tcp"),
 	}
 }
 

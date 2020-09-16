@@ -1,17 +1,21 @@
 package icmp
 
 import (
+	"github.com/terassyi/gotcp/logger"
 	"github.com/terassyi/gotcp/packet/icmp"
 	"github.com/terassyi/gotcp/proto"
-	"log"
 )
 
 type Icmp struct {
 	*proto.ProtocolBuffer
+	logger *logger.Logger
 }
 
-func New() *Icmp {
-	return &Icmp{proto.NewProtocolBuffer()}
+func New(debug bool) *Icmp {
+	return &Icmp{
+		ProtocolBuffer: proto.NewProtocolBuffer(),
+		logger:         logger.New(debug, "icmp"),
+	}
 }
 
 func (i *Icmp) Recv(buf []byte) {
@@ -24,10 +28,12 @@ func (i *Icmp) Handle() {
 		if ok {
 			packet, err := icmp.New(buf)
 			if err != nil {
-				log.Printf("icmp packet serialize error: %v", err)
+				i.logger.Errorf("icmp packet serialize error: %v", err)
 				return
 			}
-			packet.Show()
+			if i.logger.DebugMode() {
+				packet.Show()
+			}
 		}
 	}
 }

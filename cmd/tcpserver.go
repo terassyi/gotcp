@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/google/subcommands"
+	"github.com/sirupsen/logrus"
 	"github.com/terassyi/gotcp/interfaces"
 	etherframe "github.com/terassyi/gotcp/packet/ethernet"
 	"github.com/terassyi/gotcp/proto/arp"
@@ -17,6 +18,7 @@ import (
 type TcpServerCommand struct {
 	Iface string
 	Port  int
+	Debug bool
 }
 
 func (*TcpServerCommand) Name() string {
@@ -35,28 +37,39 @@ func (*TcpServerCommand) Usage() string {
 func (s *TcpServerCommand) SetFlags(f *flag.FlagSet) {
 	f.StringVar(&s.Iface, "i", "", "interface")
 	f.IntVar(&s.Port, "port", 0, "binding port")
+	f.BoolVar(&s.Debug, "debug", false, "output debug message")
 }
 
 func (s *TcpServerCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
+	if s.Debug {
+		logrus.WithFields(
+			logrus.Fields{
+				"command": "tcp server",
+			}).Debug("debug flag is set")
+	} else {
+		logrus.WithFields(logrus.Fields{
+			"command": "tcp server",
+		}).Info("debug flag is not set")
+	}
 	iface, err := interfaces.New(s.Iface, "afpacket")
 	if err != nil {
 		panic(err)
 	}
 
-	arpProtocol := arp.New(arp.NewTable())
+	arpProtocol := arp.New(arp.NewTable(), s.Debug)
 	if err := arpProtocol.SetAddr(s.Iface); err != nil {
 		fmt.Println(err)
 		return subcommands.ExitFailure
 	}
 	e, err := ethernet.New(iface, arpProtocol)
-	icmpProtocol := icmp.New()
+	icmpProtocol := icmp.New(s.Debug)
 
-	tcpProtocol, err := tcp.New()
+	tcpProtocol, err := tcp.New(s.Debug)
 	if err != nil {
 		fmt.Println(err)
 		return subcommands.ExitFailure
 	}
-	ip, err := ipv4.New(e, icmpProtocol, tcpProtocol)
+	ip, err := ipv4.New(e, icmpProtocol, tcpProtocol, s.Debug)
 	if err != nil {
 		fmt.Println(err)
 		return subcommands.ExitFailure
@@ -86,23 +99,33 @@ func (s *TcpServerCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 			case etherframe.ETHER_TYPE_ARP:
 				arpProtocol.Recv(frame.Payload())
 			case etherframe.ETHER_TYPE_IPV6:
-				fmt.Println("[info] ipv6 is not supported.")
+				logrus.WithFields(logrus.Fields{
+					"command": "tcp server",
+				}).Info("ipv6 is not supported")
 			default:
-				fmt.Println("[info] unknown ethernet type.")
+				logrus.WithFields(logrus.Fields{
+					"command": "tcp server",
+				}).Info("unknown ethernet type.")
 			}
 		}
 	}()
 
 	// tcp server
-	fmt.Println("[info] tcp server prepare... port=", s.Port)
+	logrus.WithFields(logrus.Fields{
+		"command": "tcp client",
+	}).Infof("tcp server running at %d\n", s.Port)
 	listener, err := tcpProtocol.Listen("0.0.0.0", s.Port)
 	if err != nil {
-		fmt.Printf("[error] %v", err)
+		logrus.WithFields(logrus.Fields{
+			"command": "tcp server",
+		}).Error(err)
 		return subcommands.ExitFailure
 	}
 	conn, err := listener.Accept()
 	if err != nil {
-		fmt.Printf("[error] %v", err)
+		logrus.WithFields(logrus.Fields{
+			"command": "tcp server",
+		}).Error(err)
 		return subcommands.ExitFailure
 	}
 
@@ -112,25 +135,30 @@ func (s *TcpServerCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 		buf := make([]byte, 30)
 		l, err := conn.Read(buf)
 		if err != nil {
-			fmt.Println("[error] ", err)
 			errChan <- err
 			return
 		}
-		fmt.Println("[info] message recv: ", string(buf))
-
+		logrus.WithFields(logrus.Fields{
+			"command": "tcp server",
+		}).Infof("message recv %dbytes\n", l)
+		logrus.Println("message recv> ", string(buf))
 		message := "Hello from gotcp server"
 		l, err = conn.Write([]byte(message))
 		if err != nil {
-			fmt.Println("[error] ", err)
 			errChan <- err
 			return
 		}
-		fmt.Printf("[info] message send %dbytes\n", l)
-
+		logrus.WithFields(logrus.Fields{
+			"command": "tcp server",
+		}).Infof("message send %dbytes\n", l)
+		logrus.Println("message send> ", message)
 	}()
 
 	err = <-errChan
 	if err != nil {
+		logrus.WithFields(logrus.Fields{
+			"command": "tcp server",
+		}).Error(err)
 		return subcommands.ExitFailure
 	}
 	return subcommands.ExitSuccess
