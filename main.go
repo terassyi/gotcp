@@ -17,6 +17,7 @@ func main() {
 	subcommands.Register(&cmd.PingCommand{}, "")
 	subcommands.Register(&cmd.TcpClientCommand{}, "")
 	subcommands.Register(&cmd.TcpServerCommand{}, "")
+	subcommands.Register(&cmd.IdsCommand{}, "")
 
 	flag.Parse()
 	ctx := context.Background()
