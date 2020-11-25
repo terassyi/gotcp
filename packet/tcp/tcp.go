@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"github.com/terassyi/gotcp/packet/ipv4"
 	"github.com/terassyi/gotcp/util"
 	"strings"
 )
@@ -22,6 +23,14 @@ type Header struct {
 	WindowSize        uint16
 	Checksum          uint16
 	Urgent            uint16
+}
+
+type pseudoHeader struct {
+	sourceAddress ipv4.IPAddress
+	destinationAddress ipv4.IPAddress
+	zero uint16
+	ptcl uint16
+	tcpLength uint32
 }
 
 type Packet struct {
@@ -192,12 +201,21 @@ func (tp *Packet) Serialize() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (tp *Packet) ReCalculateChecksum() error {
+func (tp *Packet) ReCalculateChecksum(src, dst ipv4.IPAddress) error {
 	tp.Header.Checksum = uint16(0)
-	buf, err := tp.Serialize()
+	pseudo, err := newPseudoHeader(src, dst, tp)
 	if err != nil {
 		return err
 	}
+	pseudoBytes, err := pseudo.serialize()
+	if err != nil {
+		return err
+	}
+	data, err := tp.Serialize()
+	if err != nil {
+		return err
+	}
+	buf := append(pseudoBytes, data...)
 	sum := util.Checksum2(buf, len(buf), 0)
 	tp.Header.Checksum = sum
 	return nil
@@ -220,13 +238,14 @@ func Build(src, dst uint16, seq, ack uint32, flag ControlFlag, window, urgent ui
 		Header: *header,
 		Data:   data,
 	}
-	if err := packet.ReCalculateChecksum(); err != nil {
-		return nil, err
-	}
+	// don't calculate checksum, because of pseudo header
+	//if err := packet.ReCalculateChecksum(); err != nil {
+	//	return nil, err
+	//}
 	return packet, nil
 }
 
-func (tcpp *Packet) AddOption(ops Options) {
+func (tp *Packet) AddOption(ops Options) {
 	totalLength := 0
 	for _, op := range ops {
 		totalLength += op.Length()
@@ -237,14 +256,39 @@ func (tcpp *Packet) AddOption(ops Options) {
 			ops = append(ops, NoOperation{})
 		}
 	}
-	tcpp.Option = ops
-	tcpp.Header.OffsetControlFlag = tcpp.Header.OffsetControlFlag.changeHeaderLength(totalLength + nopPadding)
+	tp.Option = ops
+	tp.Header.OffsetControlFlag = tp.Header.OffsetControlFlag.changeHeaderLength(totalLength + nopPadding)
 }
 
-func (tcpp *Packet) Show() {
-	tcpp.Header.Show()
-	fmt.Println(hex.Dump(tcpp.Option.Byte()))
+func (tp *Packet) Length() uint32 {
+	length := 20
+	length += len(tp.Option.Byte())
+	length += len(tp.Data)
+	return uint32(length)
+}
+
+func (tp *Packet) Show() {
+	tp.Header.Show()
+	fmt.Println(hex.Dump(tp.Option.Byte()))
 	fmt.Println("------------------------")
-	fmt.Println(hex.Dump(tcpp.Data))
+	fmt.Println(hex.Dump(tp.Data))
 	fmt.Println("------------------------")
+}
+
+func newPseudoHeader(src, dst ipv4.IPAddress, packet *Packet) (*pseudoHeader, error) {
+	return &pseudoHeader{
+		sourceAddress:      src,
+		destinationAddress: dst,
+		zero:               uint16(0),
+		ptcl:               uint16(06),
+		tcpLength:          packet.Length(),
+	}, nil
+}
+
+func (p *pseudoHeader) serialize() ([]byte, error) {
+	buf := bytes.NewBuffer(make([]byte, 0))
+	if err := binary.Write(buf, binary.BigEndian, p); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }

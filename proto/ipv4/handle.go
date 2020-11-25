@@ -125,6 +125,10 @@ func (ip *Ipv4) TcpSend() {
 			ip.logger.Error("failed to handle tcp packet for sending")
 			continue
 		}
+		if err := addrPacket.Packet.ReCalculateChecksum(*ip.Address, *addrPacket.Address); err != nil {
+			ip.logger.Error("failed to handle tcp packet for sending")
+			continue
+		}
 		data, err := addrPacket.Packet.Serialize()
 		if err != nil {
 			ip.logger.Error(err)
