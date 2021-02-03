@@ -1,9 +1,18 @@
 version: '3'
 
 services:
-  gotcp:
-    image: golang:latest
-    container_name: gotcp
+  node1:
+    build: .
+    container_name: node1
+    tty: true
+    privileged: true
+    volumes:
+      - ./:/usr/home/gotcp
+    working_dir: /usr/home/gotcp
+
+  node2:
+    build: .
+    container_name: node2
     tty: true
     privileged: true
     volumes:

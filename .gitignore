@@ -4,3 +4,4 @@
 #/vms/host1/ubuntu*
 /vms/host2/.vagrant
 #/vms/host2/ubuntu*
+gotcp
