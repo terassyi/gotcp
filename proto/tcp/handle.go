@@ -116,6 +116,7 @@ func (t *Tcp) HandlePacket(src *ipv4.IPAddress, buf []byte) {
 	} else {
 
 	}
+	// TODO delete this info.
 	t.logger.Info("received packet is not handled. invalid peer.")
 	return
 }

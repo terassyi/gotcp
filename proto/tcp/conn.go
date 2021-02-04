@@ -19,7 +19,10 @@ type Conn struct {
 	logger     *logger.Logger
 }
 
-const window int = 1024
+const (
+	window int = 1024
+	rto int = 30 // select a better value
+	)
 
 func newConn(peer *port.Peer, debug bool) (*Conn, error) {
 	conn := &Conn{
@@ -70,14 +73,11 @@ func (c *Conn) activeClose() error {
 		c.tcb.rcv.NXT -= 1
 		if p.Packet.Header.OffsetControlFlag.ControlFlag().Fin() {
 			// simultaneous close
+			c.tcb.rcv.NXT += 1
 			if err := c.send(tcp.ACK, nil); err != nil {
 				return err
 			}
 			c.tcb.CLOSING()
-			_, ok := <-c.closeQueue
-			if !ok {
-				return fmt.Errorf("failed to recieve ack of fin")
-			}
 			c.tcb.TIME_WAIT()
 			c.logger.Debug("start timer")
 			c.tcb.startMSL()
@@ -141,8 +141,11 @@ func (c *Conn) passiveClose(fin AddressedPacket) error {
 	if c.tcb.state == FIN_WAIT2 {
 		c.tcb.TIME_WAIT()
 	}
-	if c.tcb.state == CLOSING || c.tcb.state == LAST_ACK {
-		// stay
+	if c.tcb.state == CLOSING {
+		c.tcb.TIME_WAIT()
+	}
+	if c.tcb.state == LAST_ACK {
+		c.tcb.CLOSED()
 	}
 	if c.tcb.state == TIME_WAIT {
 		// restart 2MSL
@@ -221,6 +224,7 @@ func (c *Conn) handle(packet AddressedPacket) error {
 			c.handleEstablished(packet)
 		case CLOSING:
 			c.handleEstablished(packet)
+			c.logger.Debug("ackkkkkkkkk")
 			if c.tcb.finSend {
 				c.tcb.TIME_WAIT()
 			}
@@ -231,6 +235,7 @@ func (c *Conn) handle(packet AddressedPacket) error {
 			}
 		case TIME_WAIT:
 			// resend fin
+			c.logger.Debug("resend fin")
 			if err := c.send(tcp.FIN|tcp.ACK, nil); err != nil {
 				return err
 			}
@@ -333,7 +338,11 @@ func (c *Conn) send(flag tcp.ControlFlag, data []byte) error {
 	} else {
 		c.tcb.snd.NXT += uint32(len(data))
 	}
-
+	// add retransmission queue
+	c.tcb.retrans <- AddressedPacket{
+		Packet:  p,
+		Address: c.tcb.peer.PeerAddr,
+	}
 	//c.tcb.showSeq()
 	return nil
 }
