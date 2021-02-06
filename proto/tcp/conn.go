@@ -5,13 +5,15 @@ import (
 	"github.com/terassyi/gotcp/logger"
 	"github.com/terassyi/gotcp/packet/tcp"
 	"github.com/terassyi/gotcp/proto/port"
+	"time"
 )
 
 type Conn struct {
 	tcb        *controlBlock
 	Peer       *port.Peer
-	queue      chan AddressedPacket
+	retransmissionQueue      chan *AddressedPacket
 	closeQueue chan AddressedPacket
+	receivedAck chan uint32
 	rcvBuffer  []byte
 	readyQueue chan []byte
 	inner      *Tcp
@@ -28,7 +30,7 @@ func newConn(peer *port.Peer, debug bool) (*Conn, error) {
 	conn := &Conn{
 		tcb:        NewControlBlock(peer, debug),
 		Peer:       peer,
-		queue:      make(chan AddressedPacket, 100),
+		retransmissionQueue:      make(chan *AddressedPacket, 100),
 		rcvBuffer:  make([]byte, 0, window),
 		readyQueue: make(chan []byte, 10),
 	}
@@ -339,11 +341,16 @@ func (c *Conn) send(flag tcp.ControlFlag, data []byte) error {
 		c.tcb.snd.NXT += uint32(len(data))
 	}
 	// add retransmission queue
-	c.tcb.retrans <- AddressedPacket{
+	c.retransmissionQueue <- &AddressedPacket{
 		Packet:  p,
 		Address: c.tcb.peer.PeerAddr,
 	}
 	//c.tcb.showSeq()
+	return nil
+}
+
+func (c *Conn) resend(packet *AddressedPacket) error {
+	c.inner.enqueue(c.tcb.peer.PeerAddr, packet.Packet)
 	return nil
 }
 
@@ -380,4 +387,51 @@ func (c *Conn) write(b []byte) (int, error) {
 	}
 	// TODO retransmission handle
 	return len(b), nil
+}
+
+func (c *Conn) retransmissionHandler() {
+
+	queue := make([]retransmissionPacket, 0, 100)
+
+	go func() {
+		ticker := time.NewTicker(1 * time.Second) // scheduler
+		for {
+			select {
+			case q :=  <- c.retransmissionQueue:
+				queue = append(queue, retransmissionPacket{
+					timeStamp: time.Now(),
+					ackNum:    q.Packet.Header.Sequence + 1,
+					packet:    q,
+				})
+			case ack := <- c.receivedAck:
+				idx := -1
+				for i, p := range queue {
+					if p.ackNum == ack {
+						idx = i
+					}
+				}
+				if idx == -1 {
+					continue
+				}
+				if idx == 0 {
+					queue = queue[1:]
+				} else if idx == len(queue) {
+					queue = queue[:len(queue)-1]
+				} else {
+					queue = append(queue[:idx-1], queue[idx:]...)
+				}
+			case <- ticker.C:
+				now := time.Now()
+				for _, q := range queue {
+					if now.Unix() >= q.timeStamp.Unix() {
+						if err := c.resend(q.packet); err != nil {
+							c.logger.Error(err)
+							continue
+						}
+						q.timeStamp = now // reset timestamp
+					}
+				}
+			}
+		}
+	}()
 }

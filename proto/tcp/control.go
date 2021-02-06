@@ -17,6 +17,7 @@ type controlBlock struct {
 	snd     *SendSequence
 	rcv     *ReceiveSequence
 	retrans chan AddressedPacket
+	ack chan uint32
 	Window  []byte
 	finSend bool
 	mutex   *sync.RWMutex
