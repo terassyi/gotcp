@@ -209,8 +209,11 @@ func (c *Conn) handle(packet AddressedPacket) error {
 		case FIN_WAIT1:
 			c.handleEstablished(packet)
 			if c.tcb.finSend {
+				fmt.Println("sent to close channel")
 				c.closeQueue <- packet
 			}
+			//fmt.Println("sent to close channel")
+			//c.closeQueue <- packet
 			return nil
 		case FIN_WAIT2:
 			c.handleEstablished(packet)

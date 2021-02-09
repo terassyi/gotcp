@@ -139,8 +139,8 @@ func (l *Listener) getConnection() (*Conn, error) {
 	conn := &Conn{
 		tcb:        l.tcb,
 		Peer:       l.tcb.peer,
-		retransmissionQueue:      make(chan *AddressedPacket, 1),
-		receivedAck: make(chan uint32, 1),
+		retransmissionQueue:      make(chan *AddressedPacket, 100),
+		receivedAck: make(chan uint32, 100),
 		closeQueue: make(chan AddressedPacket, 1),
 		rcvBuffer:  make([]byte, window),
 		readyQueue: make(chan []byte, 10),
