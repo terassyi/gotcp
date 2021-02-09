@@ -139,16 +139,21 @@ func (l *Listener) getConnection() (*Conn, error) {
 	conn := &Conn{
 		tcb:        l.tcb,
 		Peer:       l.tcb.peer,
-		queue:      make(chan AddressedPacket, 100),
+		retransmissionQueue:      make(chan *AddressedPacket, 1),
+		receivedAck: make(chan uint32, 1),
 		closeQueue: make(chan AddressedPacket, 1),
 		rcvBuffer:  make([]byte, window),
 		readyQueue: make(chan []byte, 10),
 		inner:      l.inner,
+		logger: l.inner.logger,
 	}
 	conn.pushFlag = true
 	// entry connection list
 	l.inner.connections[conn.Peer.Port] = conn
 	// delete from listener list
 	delete(l.inner.listeners, conn.Peer.Port)
+	// start retransmission routine
+	conn.logger.Debug("retransmission routine start ")
+	go conn.retransmissionHandler()
 	return conn, nil
 }

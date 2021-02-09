@@ -39,7 +39,7 @@ func OptionsFromByte(data []byte) (Options, error) {
 			i += 1
 		case SCK:
 			l := data[i+1]
-			d := data[i+2 : l-2]
+			d := data[i+2 : i+int(l)]
 			ops = append(ops, SACK(d))
 			i += int(l) - 1
 		case TS:

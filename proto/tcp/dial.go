@@ -105,7 +105,8 @@ func (d *dialer) getConnection() (*Conn, error) {
 	conn := &Conn{
 		tcb:        d.tcb,
 		Peer:       d.peer,
-		queue:      make(chan AddressedPacket, 100),
+		retransmissionQueue:      make(chan *AddressedPacket, 1),
+		receivedAck: make(chan uint32, 1),
 		closeQueue: make(chan AddressedPacket, 1),
 		rcvBuffer:  make([]byte, window),
 		readyQueue: make(chan []byte, 10),

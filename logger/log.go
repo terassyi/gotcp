@@ -69,11 +69,11 @@ func (l *Logger) Debugf(format string, args ...interface{}) {
 	}
 }
 
-func (l *Logger) Warnf(foramt string, args ...interface{}) {
+func (l *Logger) Warnf(format string, args ...interface{}) {
 	if l.flag {
 		logrus.WithFields(logrus.Fields{
 			"protocol": l.proto,
-		}).Warnf(foramt, args)
+		}).Warnf(format, args)
 	}
 }
 

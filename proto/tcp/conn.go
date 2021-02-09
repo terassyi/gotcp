@@ -226,7 +226,6 @@ func (c *Conn) handle(packet AddressedPacket) error {
 			c.handleEstablished(packet)
 		case CLOSING:
 			c.handleEstablished(packet)
-			c.logger.Debug("ackkkkkkkkk")
 			if c.tcb.finSend {
 				c.tcb.TIME_WAIT()
 			}
@@ -295,6 +294,9 @@ func (c *Conn) handleEstablished(packet AddressedPacket) {
 		}
 	}
 	c.tcb.rcv.NXT += 1
+	// send signal retransmission routine
+	c.receivedAck <- packet.Packet.Header.Ack
+	c.logger.Debug("sent ack number to retransmission routine")
 }
 
 func (c *Conn) handleSegment(packet AddressedPacket) error {
@@ -341,9 +343,11 @@ func (c *Conn) send(flag tcp.ControlFlag, data []byte) error {
 		c.tcb.snd.NXT += uint32(len(data))
 	}
 	// add retransmission queue
-	c.retransmissionQueue <- &AddressedPacket{
-		Packet:  p,
-		Address: c.tcb.peer.PeerAddr,
+	if c.tcb.IsReadyRecv() && data != nil {
+		c.retransmissionQueue <- &AddressedPacket{
+			Packet:  p,
+			Address: c.tcb.peer.PeerAddr,
+		}
 	}
 	//c.tcb.showSeq()
 	return nil
@@ -400,14 +404,17 @@ func (c *Conn) retransmissionHandler() {
 			case q :=  <- c.retransmissionQueue:
 				queue = append(queue, retransmissionPacket{
 					timeStamp: time.Now(),
-					ackNum:    q.Packet.Header.Sequence + 1,
+					ackNum:    q.Packet.Header.Sequence + uint32(len(q.Packet.Data)),
 					packet:    q,
 				})
+				//fmt.Printf("[DEBUG] append retransmission queue ack=%x data=%s length=%d\n", q.Packet.Header.Sequence, string(q.Packet.Data), len(queue))
 			case ack := <- c.receivedAck:
+				//fmt.Printf("[DEUBG] ack(=%x) is detected\n", ack)
 				idx := -1
 				for i, p := range queue {
 					if p.ackNum == ack {
 						idx = i
+						//fmt.Printf("[DEBUG] expected ack=%x\n", ack)
 					}
 				}
 				if idx == -1 {
@@ -420,15 +427,16 @@ func (c *Conn) retransmissionHandler() {
 				} else {
 					queue = append(queue[:idx-1], queue[idx:]...)
 				}
-			case <- ticker.C:
-				now := time.Now()
+				//fmt.Printf("[DEBUG] retrans queue length is %d\n", len(queue))
+			case n := <- ticker.C:
 				for _, q := range queue {
-					if now.Unix() >= q.timeStamp.Unix() {
+					if n.Unix() >= q.timeStamp.Unix() + int64(rto) {
 						if err := c.resend(q.packet); err != nil {
 							c.logger.Error(err)
 							continue
 						}
-						q.timeStamp = now // reset timestamp
+						//fmt.Printf("[DEBUG] timeout retransmit ack=%x\n", q.ackNum)
+						q.timeStamp = n // reset timestamp
 					}
 				}
 			}
