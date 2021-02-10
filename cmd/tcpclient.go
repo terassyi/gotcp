@@ -86,7 +86,7 @@ func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 	// packet handle
 	go func() {
 		for {
-			buf := make([]byte, 1500)
+			buf := make([]byte, 1514)
 			_, err := ip.Eth.Recv(buf)
 			if err != nil {
 				panic(err)
@@ -97,7 +97,8 @@ func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 			}
 			switch frame.Type() {
 			case etherframe.ETHER_TYPE_IP:
-				go ip.HandlePacket(frame.Payload())
+				//go ip.HandlePacket(frame.Payload())
+				ip.HandlePacket(frame.Payload())
 			case etherframe.ETHER_TYPE_ARP:
 				arpProtocol.Recv(frame.Payload())
 			case etherframe.ETHER_TYPE_IPV6:
@@ -135,14 +136,17 @@ func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 	logrus.Println("message send> ", message)
 	time.Sleep(time.Second * 2)
 
-	buf := make([]byte, 30)
-	_, err = conn.Read(buf)
+	buf := make([]byte, 20480)
+	l, err := conn.Read(buf)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
 			"command": "tcp client",
 		}).Error(err)
 		return subcommands.ExitFailure
 	}
+	logrus.WithFields(logrus.Fields{
+		"command": "tcp client",
+	}).Debugf("received %d bytes\n", l)
 	fmt.Println("message recv> ", string(buf))
 
 	if err := conn.Close(); err != nil {

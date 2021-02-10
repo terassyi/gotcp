@@ -89,7 +89,8 @@ func (ip *Ipv4) manage(packet *ipv4.Packet) error {
 		ip.Icmp.Recv(packet.Data)
 	case ipv4.IPTCPProtocol:
 		//ip.Tcp.Recv(packet.Data)
-		go ip.Tcp.HandlePacket(&packet.Header.Src, packet.Data)
+		//go ip.Tcp.HandlePacket(&packet.Header.Src, packet.Data)
+		ip.Tcp.HandlePacket(&packet.Header.Src, packet.Data)
 	default:
 		return fmt.Errorf("unsupported protocol")
 	}

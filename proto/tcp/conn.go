@@ -5,13 +5,15 @@ import (
 	"github.com/terassyi/gotcp/logger"
 	"github.com/terassyi/gotcp/packet/tcp"
 	"github.com/terassyi/gotcp/proto/port"
+	"time"
 )
 
 type Conn struct {
 	tcb        *controlBlock
 	Peer       *port.Peer
-	queue      chan AddressedPacket
+	retransmissionQueue      chan *AddressedPacket
 	closeQueue chan AddressedPacket
+	receivedAck chan uint32
 	rcvBuffer  []byte
 	readyQueue chan []byte
 	inner      *Tcp
@@ -19,17 +21,20 @@ type Conn struct {
 	logger     *logger.Logger
 }
 
-const window int = 1024
+const (
+	window uint32 = 3000
+	rto int = 30 // select a better value
+	)
 
 func newConn(peer *port.Peer, debug bool) (*Conn, error) {
 	conn := &Conn{
 		tcb:        NewControlBlock(peer, debug),
 		Peer:       peer,
-		queue:      make(chan AddressedPacket, 100),
+		retransmissionQueue:      make(chan *AddressedPacket, 100),
 		rcvBuffer:  make([]byte, 0, window),
 		readyQueue: make(chan []byte, 10),
 	}
-	conn.tcb.rcv.WND = 1024
+	conn.tcb.rcv.WND = window
 	return conn, nil
 }
 
@@ -70,14 +75,11 @@ func (c *Conn) activeClose() error {
 		c.tcb.rcv.NXT -= 1
 		if p.Packet.Header.OffsetControlFlag.ControlFlag().Fin() {
 			// simultaneous close
+			c.tcb.rcv.NXT += 1
 			if err := c.send(tcp.ACK, nil); err != nil {
 				return err
 			}
 			c.tcb.CLOSING()
-			_, ok := <-c.closeQueue
-			if !ok {
-				return fmt.Errorf("failed to recieve ack of fin")
-			}
 			c.tcb.TIME_WAIT()
 			c.logger.Debug("start timer")
 			c.tcb.startMSL()
@@ -141,8 +143,11 @@ func (c *Conn) passiveClose(fin AddressedPacket) error {
 	if c.tcb.state == FIN_WAIT2 {
 		c.tcb.TIME_WAIT()
 	}
-	if c.tcb.state == CLOSING || c.tcb.state == LAST_ACK {
-		// stay
+	if c.tcb.state == CLOSING {
+		c.tcb.TIME_WAIT()
+	}
+	if c.tcb.state == LAST_ACK {
+		c.tcb.CLOSED()
 	}
 	if c.tcb.state == TIME_WAIT {
 		// restart 2MSL
@@ -175,7 +180,8 @@ func (c *Conn) handle(packet AddressedPacket) error {
 		//if err := c.send(tcp.ACK, nil); err != nil {
 		//	return err
 		//}
-		return fmt.Errorf("recieve window is zero")
+		//return fmt.Errorf("recieve window is zero")
+		return fmt.Errorf("recieve window is zero seq=%x rcv.nxt=%x", packet.Packet.Header.Sequence, c.tcb.rcv.NXT)
 	}
 
 	// second check the RST bit,
@@ -206,6 +212,8 @@ func (c *Conn) handle(packet AddressedPacket) error {
 			if c.tcb.finSend {
 				c.closeQueue <- packet
 			}
+			//fmt.Println("sent to close channel")
+			//c.closeQueue <- packet
 			return nil
 		case FIN_WAIT2:
 			c.handleEstablished(packet)
@@ -231,6 +239,7 @@ func (c *Conn) handle(packet AddressedPacket) error {
 			}
 		case TIME_WAIT:
 			// resend fin
+			c.logger.Debug("resend fin")
 			if err := c.send(tcp.FIN|tcp.ACK, nil); err != nil {
 				return err
 			}
@@ -288,6 +297,8 @@ func (c *Conn) handleEstablished(packet AddressedPacket) {
 		}
 	}
 	c.tcb.rcv.NXT += 1
+	// send signal retransmission routine
+	c.receivedAck <- packet.Packet.Header.Ack
 }
 
 func (c *Conn) handleSegment(packet AddressedPacket) error {
@@ -297,12 +308,19 @@ func (c *Conn) handleSegment(packet AddressedPacket) error {
 
 	// check PSH
 	if packet.Packet.Header.OffsetControlFlag.ControlFlag().Psh() {
-		c.readyQueue <- packet.Packet.Data
+		//c.readyQueue <- packet.Packet.Data
+		c.rcvBuffer = append(c.rcvBuffer, packet.Packet.Data...)
+		c.readyQueue <- c.rcvBuffer
+		c.rcvBuffer = make([]byte, 0, window)
+		c.tcb.rcv.WND = window
+		c.logger.Debug("PSH flag is received. Recover window.")
 	} else {
 		c.rcvBuffer = append(c.rcvBuffer, packet.Packet.Data...)
 		if len(c.rcvBuffer) >= cap(c.rcvBuffer) {
 			c.readyQueue <- c.rcvBuffer
 			c.rcvBuffer = make([]byte, 0, window)
+			c.tcb.rcv.WND = window
+			c.logger.Debug("Receive buffer is full. Recover window.")
 		}
 	}
 	l := len(packet.Packet.Data)
@@ -333,8 +351,19 @@ func (c *Conn) send(flag tcp.ControlFlag, data []byte) error {
 	} else {
 		c.tcb.snd.NXT += uint32(len(data))
 	}
-
+	// add retransmission queue
+	if c.tcb.IsReadyRecv() && data != nil {
+		c.retransmissionQueue <- &AddressedPacket{
+			Packet:  p,
+			Address: c.tcb.peer.PeerAddr,
+		}
+	}
 	//c.tcb.showSeq()
+	return nil
+}
+
+func (c *Conn) resend(packet *AddressedPacket) error {
+	c.inner.enqueue(c.tcb.peer.PeerAddr, packet.Packet)
 	return nil
 }
 
@@ -371,4 +400,55 @@ func (c *Conn) write(b []byte) (int, error) {
 	}
 	// TODO retransmission handle
 	return len(b), nil
+}
+
+func (c *Conn) retransmissionHandler() {
+
+	queue := make([]retransmissionPacket, 0, 100)
+
+	go func() {
+		ticker := time.NewTicker(1 * time.Second) // scheduler
+		for {
+			select {
+			case q :=  <- c.retransmissionQueue:
+				queue = append(queue, retransmissionPacket{
+					timeStamp: time.Now(),
+					ackNum:    q.Packet.Header.Sequence + uint32(len(q.Packet.Data)),
+					packet:    q,
+				})
+				//fmt.Printf("[DEBUG] append retransmission queue ack=%x data=%s length=%d\n", q.Packet.Header.Sequence, string(q.Packet.Data), len(queue))
+			case ack := <- c.receivedAck:
+				//fmt.Printf("[DEUBG] ack(=%x) is detected\n", ack)
+				idx := -1
+				for i, p := range queue {
+					if p.ackNum == ack {
+						idx = i
+						//fmt.Printf("[DEBUG] expected ack=%x\n", ack)
+					}
+				}
+				if idx == -1 {
+					continue
+				}
+				if idx == 0 {
+					queue = queue[1:]
+				} else if idx == len(queue) {
+					queue = queue[:len(queue)-1]
+				} else {
+					queue = append(queue[:idx-1], queue[idx:]...)
+				}
+				//fmt.Printf("[DEBUG] retrans queue length is %d\n", len(queue))
+			case n := <- ticker.C:
+				for _, q := range queue {
+					if n.Unix() >= q.timeStamp.Unix() + int64(rto) {
+						if err := c.resend(q.packet); err != nil {
+							c.logger.Error(err)
+							continue
+						}
+						//fmt.Printf("[DEBUG] timeout retransmit ack=%x\n", q.ackNum)
+						q.timeStamp = n // reset timestamp
+					}
+				}
+			}
+		}
+	}()
 }

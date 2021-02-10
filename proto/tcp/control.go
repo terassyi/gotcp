@@ -17,6 +17,7 @@ type controlBlock struct {
 	snd     *SendSequence
 	rcv     *ReceiveSequence
 	retrans chan AddressedPacket
+	ack chan uint32
 	Window  []byte
 	finSend bool
 	mutex   *sync.RWMutex
@@ -147,7 +148,7 @@ func (cb *controlBlock) activeOpen() (*tcp.Packet, error) {
 	if err != nil {
 		return nil, err
 	}
-	packet.AddOption(tcp.Options{tcp.MaxSegmentSize(1460), tcp.SACKPermitted{}, tcp.WindowScale(7), *t})
+	packet.AddOption(tcp.Options{tcp.MaxSegmentSize(1460), tcp.WindowScale(7), *t})
 	cb.SYN_SENT()
 	return packet, nil
 }

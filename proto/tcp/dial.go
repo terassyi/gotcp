@@ -41,7 +41,7 @@ func (t *Tcp) dial(addr string, peerport int) (*dialer, error) {
 		inner:  t,
 		logger: t.logger,
 	}
-	d.tcb.rcv.WND = 1024
+	d.tcb.rcv.WND = window
 	t.dialers[peer.Port] = d
 	if err := d.establish(); err != nil {
 		return nil, err
@@ -105,7 +105,8 @@ func (d *dialer) getConnection() (*Conn, error) {
 	conn := &Conn{
 		tcb:        d.tcb,
 		Peer:       d.peer,
-		queue:      make(chan AddressedPacket, 100),
+		retransmissionQueue:      make(chan *AddressedPacket, 100),
+		receivedAck: make(chan uint32, 100),
 		closeQueue: make(chan AddressedPacket, 1),
 		rcvBuffer:  make([]byte, window),
 		readyQueue: make(chan []byte, 10),
