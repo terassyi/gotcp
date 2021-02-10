@@ -180,7 +180,8 @@ func (c *Conn) handle(packet AddressedPacket) error {
 		//if err := c.send(tcp.ACK, nil); err != nil {
 		//	return err
 		//}
-		return fmt.Errorf("recieve window is zero")
+		//return fmt.Errorf("recieve window is zero")
+		return fmt.Errorf("recieve window is zero seq=%x rcv.nxt=%x", packet.Packet.Header.Sequence, c.tcb.rcv.NXT)
 	}
 
 	// second check the RST bit,

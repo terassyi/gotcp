@@ -84,7 +84,7 @@ func (s *TcpServerCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 	// packet handle
 	go func() {
 		for {
-			buf := make([]byte, 1500)
+			buf := make([]byte, 1514)
 			_, err := ip.Eth.Recv(buf)
 			if err != nil {
 				panic(err)
@@ -95,7 +95,8 @@ func (s *TcpServerCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 			}
 			switch frame.Type() {
 			case etherframe.ETHER_TYPE_IP:
-				go ip.HandlePacket(frame.Payload())
+				//go ip.HandlePacket(frame.Payload())
+				ip.HandlePacket(frame.Payload())
 			case etherframe.ETHER_TYPE_ARP:
 				arpProtocol.Recv(frame.Payload())
 			case etherframe.ETHER_TYPE_IPV6:
@@ -132,7 +133,7 @@ func (s *TcpServerCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 	var errChan chan error
 
 	go func() {
-		buf := make([]byte, 30)
+		buf := make([]byte, 20480)
 		l, err := conn.Read(buf)
 		if err != nil {
 			errChan <- err
@@ -140,7 +141,7 @@ func (s *TcpServerCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 		}
 		logrus.WithFields(logrus.Fields{
 			"command": "tcp server",
-		}).Infof("message recv %dbytes\n", l)
+		}).Infof("message recv %d bytes\n", l)
 		logrus.Println("message recv> ", string(buf))
 		message := "Hello from gotcp server"
 		l, err = conn.Write([]byte(message))
