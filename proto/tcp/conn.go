@@ -22,7 +22,7 @@ type Conn struct {
 }
 
 const (
-	window int = 1024
+	window uint32 = 3000
 	rto int = 30 // select a better value
 	)
 
@@ -34,7 +34,7 @@ func newConn(peer *port.Peer, debug bool) (*Conn, error) {
 		rcvBuffer:  make([]byte, 0, window),
 		readyQueue: make(chan []byte, 10),
 	}
-	conn.tcb.rcv.WND = 1024
+	conn.tcb.rcv.WND = window
 	return conn, nil
 }
 
@@ -176,6 +176,7 @@ func (c *Conn) handle(packet AddressedPacket) error {
 	     >0      >0     RCV.NXT =< SEG.SEQ < RCV.NXT+RCV.WND
 	                 or RCV.NXT =< SEG.SEQ+SEG.LEN-1 < RCV.NXT+RCV.WND
 	*/
+	fmt.Printf("[DEBUG] seq=%x rcv.nxt=%x\n", packet.Packet.Header.Sequence, c.tcb.rcv.NXT)
 	if c.tcb.rcv.WND == 0 || packet.Packet.Header.Sequence != c.tcb.rcv.NXT {
 		//if err := c.send(tcp.ACK, nil); err != nil {
 		//	return err
@@ -309,12 +310,19 @@ func (c *Conn) handleSegment(packet AddressedPacket) error {
 
 	// check PSH
 	if packet.Packet.Header.OffsetControlFlag.ControlFlag().Psh() {
-		c.readyQueue <- packet.Packet.Data
+		//c.readyQueue <- packet.Packet.Data
+		c.rcvBuffer = append(c.rcvBuffer, packet.Packet.Data...)
+		c.readyQueue <- c.rcvBuffer
+		c.rcvBuffer = make([]byte, 0, window)
+		c.tcb.rcv.WND = window
+		c.logger.Debug("PSH flag is received. Recover window.")
 	} else {
 		c.rcvBuffer = append(c.rcvBuffer, packet.Packet.Data...)
 		if len(c.rcvBuffer) >= cap(c.rcvBuffer) {
 			c.readyQueue <- c.rcvBuffer
 			c.rcvBuffer = make([]byte, 0, window)
+			c.tcb.rcv.WND = window
+			c.logger.Debug("Receive buffer is full. Recover window.")
 		}
 	}
 	l := len(packet.Packet.Data)
@@ -374,6 +382,7 @@ func (c *Conn) read(b []byte) (int, error) {
 		return 0, fmt.Errorf("failed to read")
 	}
 	l := copy(b, buf)
+	fmt.Println(string(b) + "\n\nhogohogoho")
 	return l, nil
 }
 

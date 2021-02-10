@@ -41,7 +41,7 @@ func (t *Tcp) dial(addr string, peerport int) (*dialer, error) {
 		inner:  t,
 		logger: t.logger,
 	}
-	d.tcb.rcv.WND = 1024
+	d.tcb.rcv.WND = window
 	t.dialers[peer.Port] = d
 	if err := d.establish(); err != nil {
 		return nil, err
