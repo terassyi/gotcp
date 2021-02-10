@@ -138,7 +138,7 @@ func New(data []byte) (*Packet, error) {
 		return nil, fmt.Errorf("header length is too short")
 	}
 	if int(header.Length) > len(data) {
-		return nil, fmt.Errorf("header length is too short")
+		return nil, fmt.Errorf("packet length is too short header-length=%d length-of-data=%d\n", int(header.Length), len(data))
 	}
 	if int(header.TTL) == 0 {
 		return nil, fmt.Errorf("ttl is zero")
