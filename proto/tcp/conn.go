@@ -176,7 +176,6 @@ func (c *Conn) handle(packet AddressedPacket) error {
 	     >0      >0     RCV.NXT =< SEG.SEQ < RCV.NXT+RCV.WND
 	                 or RCV.NXT =< SEG.SEQ+SEG.LEN-1 < RCV.NXT+RCV.WND
 	*/
-	fmt.Printf("[DEBUG] seq=%x rcv.nxt=%x\n", packet.Packet.Header.Sequence, c.tcb.rcv.NXT)
 	if c.tcb.rcv.WND == 0 || packet.Packet.Header.Sequence != c.tcb.rcv.NXT {
 		//if err := c.send(tcp.ACK, nil); err != nil {
 		//	return err
@@ -210,7 +209,6 @@ func (c *Conn) handle(packet AddressedPacket) error {
 		case FIN_WAIT1:
 			c.handleEstablished(packet)
 			if c.tcb.finSend {
-				fmt.Println("sent to close channel")
 				c.closeQueue <- packet
 			}
 			//fmt.Println("sent to close channel")
@@ -300,7 +298,6 @@ func (c *Conn) handleEstablished(packet AddressedPacket) {
 	c.tcb.rcv.NXT += 1
 	// send signal retransmission routine
 	c.receivedAck <- packet.Packet.Header.Ack
-	c.logger.Debug("sent ack number to retransmission routine")
 }
 
 func (c *Conn) handleSegment(packet AddressedPacket) error {
@@ -382,7 +379,6 @@ func (c *Conn) read(b []byte) (int, error) {
 		return 0, fmt.Errorf("failed to read")
 	}
 	l := copy(b, buf)
-	fmt.Println(string(b) + "\n\nhogohogoho")
 	return l, nil
 }
 
