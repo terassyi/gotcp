@@ -13,6 +13,7 @@ import (
 	"github.com/terassyi/gotcp/proto/icmp"
 	"github.com/terassyi/gotcp/proto/ipv4"
 	"github.com/terassyi/gotcp/proto/tcp"
+	"os"
 	"time"
 )
 
@@ -124,16 +125,33 @@ func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 		return subcommands.ExitFailure
 	}
 
-	message := "Hello from gotcp client"
+	//message := "Hello from gotcp client"
 
-	_, err = conn.Write([]byte(message))
+	message := make([]byte, 20480)
+	file, err := os.Open("data/random-data")
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
 			"command": "tcp client",
 		}).Error(err)
 		return subcommands.ExitFailure
 	}
-	logrus.Println("message send> ", message)
+	defer file.Close()
+	if _, err := file.Read(message); err != nil {
+		logrus.WithFields(logrus.Fields{
+			"command": "tcp client",
+		}).Error(err)
+		return subcommands.ExitFailure
+	}
+	//fmt.Println(string(message))
+	_, err = conn.Write([]byte(message))
+	//_, err = conn.Write(message)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{
+			"command": "tcp client",
+		}).Error(err)
+		return subcommands.ExitFailure
+	}
+	logrus.Println("message send> ", string(message))
 	time.Sleep(time.Second * 2)
 
 	buf := make([]byte, 20480)

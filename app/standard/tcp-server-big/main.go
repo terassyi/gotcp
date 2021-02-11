@@ -21,29 +21,42 @@ func main() {
 
 	defer conn.Close()
 
-	buf := make([]byte, 1024)
-	if _, err := conn.Read(buf); err != nil {
-		panic(err)
+	var data string
+	for {
+		buf := make([]byte, 20480)
+		if _, err := conn.Read(buf); err != nil {
+			//if err != io.EOF {
+			//	panic(err)
+			//}
+			break
+		}
+		fmt.Println(string(buf))
+		fmt.Println()
+		data += string(buf)
 	}
+	//buf := make([]byte, 20480)
+	//if _, err := conn.Read(buf); err != nil {
+	//	panic(err)
+	//}
 
-	fmt.Printf("Clinet> %s\n", string(buf))
+	fmt.Printf("Clinet> %s\n", data)
 	time.Sleep(1 * time.Second)
 
-	file, err := os.Open("../../../data/random-data")
+	file, err := os.Create("../../../data/random-data-res")
 	if err != nil {
 		panic(err)
 	}
 
 	defer file.Close()
 
-	res := make([]byte, 20000)
-	if _, err := file.Read(res); err != nil {
+	//res := make([]byte, 20000)
+	if _, err := file.Write([]byte(data)); err != nil {
 		panic(err)
 	}
-	if _, err := conn.Write(res); err != nil {
-		panic(err)
-	}
-	fmt.Printf("Server> %s\n", string(res))
+	//if _, err := conn.Write(res); err != nil {
+	//	panic(err)
+	//}
+	//fmt.Printf("Server> %s\n", string(res))
 
 	time.Sleep(10 * time.Second)
 }
