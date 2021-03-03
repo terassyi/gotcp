@@ -24,6 +24,7 @@ type Conn struct {
 const (
 	window uint32 = 3000
 	rto int = 30 // select a better value
+	mss int = 1448 // max segment size
 	)
 
 func newConn(peer *port.Peer, debug bool) (*Conn, error) {
@@ -391,15 +392,32 @@ func (c *Conn) Write(b []byte) (int, error) {
 }
 
 func (c *Conn) write(b []byte) (int, error) {
-	flag := tcp.ACK
-	if c.pushFlag {
-		flag += tcp.PSH
+	//flag := tcp.ACK
+	//if c.pushFlag {
+	//	flag += tcp.PSH
+	//}
+	//if err := c.send(flag, b); err != nil {
+	//	return 0, err
+	//}
+	//// TODO retransmission handle
+	//return len(b), nil
+	return c.writeWithSegment(b)
+}
+
+func (c *Conn) writeWithSegment(b []byte) (int, error) {
+	count := 0
+	for i := mss; i < len(b); i += mss {
+		flag := tcp.ACK
+		if err := c.send(flag, b[count:i]); err != nil {
+			return count, err
+		}
+		count += mss
 	}
-	if err := c.send(flag, b); err != nil {
-		return 0, err
+	flag := tcp.ACK + tcp.PSH
+	if err := c.send(flag, b[count:]); err != nil {
+		return count, err
 	}
-	// TODO retransmission handle
-	return len(b), nil
+	return count, nil
 }
 
 func (c *Conn) retransmissionHandler() {
