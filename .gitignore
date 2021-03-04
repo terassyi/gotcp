@@ -1,7 +1,7 @@
 /.idea
 /data
-/vms/host1/.vagrant
+/vm/node1/.vagrant
 #/vms/host1/ubuntu*
-/vms/host2/.vagrant
+/vm/node2/.vagrant
 #/vms/host2/ubuntu*
 gotcp

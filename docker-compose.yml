@@ -9,6 +9,9 @@ services:
     volumes:
       - ./:/usr/home/gotcp
     working_dir: /usr/home/gotcp
+    networks:
+      net:
+        ipv4_address: 172.20.0.2
 
   node2:
     build: .
@@ -18,3 +21,15 @@ services:
     volumes:
       - ./:/usr/home/gotcp
     working_dir: /usr/home/gotcp
+    networks:
+      net:
+        ipv4_address: 172.20.0.3
+
+networks:
+  net:
+    name: net
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/24

@@ -1,3 +1,3 @@
 #!/bin/bash
 
-iptables -A OUTPUT -p tcp --dport 8888 -j DROP
+iptables -A INPUT -p tcp --dport 8888 -j DROP
