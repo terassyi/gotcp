@@ -4,6 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
+	"os"
+	"time"
+
 	"github.com/google/subcommands"
 	"github.com/sirupsen/logrus"
 	"github.com/terassyi/gotcp/interfaces"
@@ -13,8 +17,6 @@ import (
 	"github.com/terassyi/gotcp/proto/icmp"
 	"github.com/terassyi/gotcp/proto/ipv4"
 	"github.com/terassyi/gotcp/proto/tcp"
-	"os"
-	"time"
 )
 
 type TcpClientCommand struct {
@@ -127,7 +129,7 @@ func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 
 	//message := "Hello from gotcp client"
 
-	message := make([]byte, 20480)
+	message := make([]byte, 2000)
 	file, err := os.Open("data/random-data")
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
@@ -142,6 +144,24 @@ func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 		}).Error(err)
 		return subcommands.ExitFailure
 	}
+	buf := ""
+	go func() {
+		for {
+			b := make([]byte, 1500)
+			l, err := conn.Read(b)
+			if err != nil {
+				if err == io.EOF {
+					fmt.Printf("Client > EOF\n")
+					break
+				}
+				panic(err)
+			}
+			fmt.Printf("Client> Read %v bytes\n", l)
+			buf += string(b)
+		}
+		fmt.Printf("Client> %v\n", buf)
+	}()
+
 	//fmt.Println(string(message))
 	_, err = conn.Write([]byte(message))
 	//_, err = conn.Write(message)
@@ -152,20 +172,18 @@ func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 		return subcommands.ExitFailure
 	}
 	logrus.Println("message send> ", string(message))
-	time.Sleep(time.Second * 2)
-
-	buf := make([]byte, 20480)
-	l, err := conn.Read(buf)
-	if err != nil {
-		logrus.WithFields(logrus.Fields{
-			"command": "tcp client",
-		}).Error(err)
-		return subcommands.ExitFailure
-	}
-	logrus.WithFields(logrus.Fields{
-		"command": "tcp client",
-	}).Debugf("received %d bytes\n", l)
-	fmt.Println("message recv> ", string(buf))
+	time.Sleep(time.Second * 5)
+	//l, err := conn.Read(buf)
+	//if err != nil {
+	//	logrus.WithFields(logrus.Fields{
+	//		"command": "tcp client",
+	//	}).Error(err)
+	//	return subcommands.ExitFailure
+	//}
+	//logrus.WithFields(logrus.Fields{
+	//	"command": "tcp client",
+	//}).Debugf("received %d bytes\n", l)
+	//fmt.Println("message recv> ", string(buf))
 
 	if err := conn.Close(); err != nil {
 		logrus.WithFields(logrus.Fields{
