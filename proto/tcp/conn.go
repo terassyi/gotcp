@@ -85,15 +85,17 @@ func (c *Conn) activeClose() error {
 	if err := c.send(tcp.ACK|tcp.FIN, nil); err != nil {
 		return err
 	}
+	c.tcb.snd.NXT++
 	c.tcb.finSend = true
 	if c.tcb.state == SYN_RECVD || c.tcb.state == ESTABLISHED {
 		c.tcb.FIN_WAIT1()
 		// wait ack of fin
+		c.logger.Info("waiting for ack of fin ", c.tcb.state.String())
 		p, ok := <-c.closeQueue
 		if !ok {
 			return fmt.Errorf("failed to recieve ack of fin.")
 		}
-		c.tcb.rcv.NXT -= 1
+		// c.tcb.rcv.NXT -= 1
 		if p.Packet.Header.OffsetControlFlag.ControlFlag().Fin() {
 			// simultaneous close
 			c.tcb.rcv.NXT += 1
@@ -117,6 +119,7 @@ func (c *Conn) activeClose() error {
 		}
 
 		c.tcb.TIME_WAIT()
+
 		if err := c.send(tcp.ACK, nil); err != nil {
 			return err
 		}
@@ -180,6 +183,10 @@ func (c *Conn) passiveClose(fin AddressedPacket) error {
 }
 
 func (c *Conn) handle(packet AddressedPacket) error {
+	c.logger.Info("---incomming packet in ack initial phase---")
+	c.logger.Info(c.tcb.state.String())
+	packet.Packet.Header.Show()
+	c.logger.Info("-------------------------------------------")
 	// handle incoming segment
 
 	// first check sequence number
@@ -224,12 +231,15 @@ func (c *Conn) handle(packet AddressedPacket) error {
 	}
 	// fifth check the ACK field
 	if packet.Packet.Header.OffsetControlFlag.ControlFlag().Ack() {
+
 		switch c.tcb.state {
 		case ESTABLISHED:
 			c.handleEstablished(packet)
-			c.tcb.rcv.NXT -= 1
+			// c.tcb.rcv.NXT -= 1 // RFC793
 		case FIN_WAIT1:
 			c.handleEstablished(packet)
+			c.logger.Info("packet recv.")
+			packet.Packet.Show()
 			if c.tcb.finSend {
 				c.closeQueue <- packet
 			}
@@ -238,7 +248,7 @@ func (c *Conn) handle(packet AddressedPacket) error {
 			return nil
 		case FIN_WAIT2:
 			c.handleEstablished(packet)
-			c.tcb.rcv.NXT -= 1
+			// c.tcb.rcv.NXT -= 1 // RFC793
 			//if len(c.tcb.retrans) == 0 {
 			//	c.tcb.TIME_WAIT()
 			//}
@@ -317,7 +327,7 @@ func (c *Conn) handleEstablished(packet AddressedPacket) {
 
 		}
 	}
-	c.tcb.rcv.NXT += 1
+	// c.tcb.rcv.NXT += 1 // RFC793
 	// send signal retransmission routine
 	c.receivedAck <- packet.Packet.Header.Ack
 }
@@ -356,7 +366,7 @@ func (c *Conn) handleSegment(packet AddressedPacket) error {
 	c.rcvBuffer.buf = append(c.rcvBuffer.buf, packet.Packet.Data...)
 	c.tcb.rcv.NXT = c.tcb.rcv.NXT + uint32(l)
 	c.tcb.rcv.WND = c.tcb.rcv.WND - uint32(l)
-	c.tcb.snd.NXT--
+	// c.tcb.snd.NXT--
 	if err := c.send(tcp.ACK, nil); err != nil {
 		return err
 	}
@@ -379,7 +389,7 @@ func (c *Conn) send(flag tcp.ControlFlag, data []byte) error {
 	}
 	c.inner.enqueue(c.tcb.peer.PeerAddr, p)
 	if data == nil {
-		c.tcb.snd.NXT += 1
+		// c.tcb.snd.NXT += 1
 	} else {
 		c.tcb.snd.NXT += uint32(len(data))
 	}

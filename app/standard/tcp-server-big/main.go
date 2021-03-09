@@ -53,7 +53,7 @@ func main() {
 				}
 				fmt.Printf("Server> Read %v bytes\n", n)
 				buf += string(b)
-				if len(buf) >= 2000 {
+				if len(buf) >= 4000 {
 					fmt.Printf("Server> recv all buf %d\n", len(buf))
 					break
 				}
@@ -63,7 +63,7 @@ func main() {
 				panic(err)
 			}
 			fmt.Printf("Server> Write %v bytes\n", n)
-			time.Sleep(10 * time.Second)
+			time.Sleep(20 * time.Second)
 			fmt.Printf("Server> Close\n")
 			conn.Close()
 		}()

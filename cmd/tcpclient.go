@@ -129,8 +129,9 @@ func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 
 	//message := "Hello from gotcp client"
 
-	message := make([]byte, 2000)
-	file, err := os.Open("data/random-data")
+	// message := make([]byte, 20480)
+	message := make([]byte, 4000)
+	file, err := os.Open("data/random-data3")
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
 			"command": "tcp client",

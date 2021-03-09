@@ -18,7 +18,7 @@ func main() {
 	}
 	defer file.Close()
 
-	buf := make([]byte, 2000)
+	buf := make([]byte, 20480)
 	if _, err := file.Read(buf); err != nil {
 		panic(err)
 	}
@@ -28,7 +28,7 @@ func main() {
 	}
 	fmt.Println("Client> write 2000 bytes to the server")
 
-	res := make([]byte, 2000)
+	res := make([]byte, 20480)
 	if _, err := conn.Read(res); err != nil {
 		panic(err)
 	}
