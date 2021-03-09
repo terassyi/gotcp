@@ -2,6 +2,9 @@ package ipv4
 
 import (
 	"fmt"
+	"syscall"
+	"unsafe"
+
 	"github.com/terassyi/gotcp/logger"
 	etherframe "github.com/terassyi/gotcp/packet/ethernet"
 	"github.com/terassyi/gotcp/packet/ipv4"
@@ -9,8 +12,6 @@ import (
 	"github.com/terassyi/gotcp/proto/ethernet"
 	"github.com/terassyi/gotcp/proto/icmp"
 	"github.com/terassyi/gotcp/proto/tcp"
-	"syscall"
-	"unsafe"
 )
 
 type Ipv4 struct {

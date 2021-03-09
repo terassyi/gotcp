@@ -53,7 +53,7 @@ func main() {
 				}
 				fmt.Printf("Server> Read %v bytes\n", n)
 				buf += string(b)
-				if len(buf) >= 4000 {
+				if len(buf) >= 6000 {
 					fmt.Printf("Server> recv all buf %d\n", len(buf))
 					break
 				}

@@ -86,13 +86,29 @@ func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 
 	go ip.TcpSend()
 
+	rcvQueue := make(chan []byte, 100)
 	// packet handle
 	go func() {
+		cnt := 0
 		for {
 			buf := make([]byte, 1514)
 			_, err := ip.Eth.Recv(buf)
 			if err != nil {
 				panic(err)
+			}
+			cnt++
+			fmt.Println("ethernet received ", cnt)
+			rcvQueue <- buf
+		}
+	}()
+
+	go func() {
+		for {
+			buf, ok := <-rcvQueue
+			if !ok {
+				logrus.WithFields(logrus.Fields{
+					"command": "tcp client",
+				}).Info("failed to receive from interface.")
 			}
 			frame, err := etherframe.New(buf)
 			if err != nil {
@@ -130,7 +146,7 @@ func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 	//message := "Hello from gotcp client"
 
 	// message := make([]byte, 20480)
-	message := make([]byte, 4000)
+	message := make([]byte, 6000)
 	file, err := os.Open("data/random-data3")
 	if err != nil {
 		logrus.WithFields(logrus.Fields{

@@ -183,10 +183,7 @@ func (c *Conn) passiveClose(fin AddressedPacket) error {
 }
 
 func (c *Conn) handle(packet AddressedPacket) error {
-	c.logger.Info("---incomming packet in ack initial phase---")
-	c.logger.Info(c.tcb.state.String())
-	packet.Packet.Header.Show()
-	c.logger.Info("-------------------------------------------")
+
 	// handle incoming segment
 
 	// first check sequence number
