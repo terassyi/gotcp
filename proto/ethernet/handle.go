@@ -2,6 +2,7 @@ package ethernet
 
 import (
 	"fmt"
+
 	"github.com/terassyi/gotcp/interfaces"
 	"github.com/terassyi/gotcp/packet/ethernet"
 	"github.com/terassyi/gotcp/packet/ipv4"
@@ -72,6 +73,7 @@ func (e *Ethernet) ipSend(dstmac *ethernet.HardwareAddress, dstip *ipv4.IPAddres
 			// enqueue in wait queue
 			for {
 				_, ok := <-e.Arp.Updated
+				e.Arp.Table.Show()
 				if ok {
 					return e.ipSend(dstmac, dstip, data)
 				}
