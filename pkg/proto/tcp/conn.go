@@ -145,7 +145,6 @@ func (c *Conn) passiveClose(fin AddressedPacket) error {
 		if err := c.send(tcp.ACK, nil); err != nil {
 			return err
 		}
-		c.tcb.snd.NXT -= 1
 		c.tcb.LAST_ACK()
 		if err := c.send(tcp.ACK|tcp.FIN, nil); err != nil {
 			return err

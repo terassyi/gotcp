@@ -26,6 +26,10 @@ func NewPeer(addr *ipv4.IPAddress, peerport, myport int) *Peer {
 	}
 }
 
+func (p *Peer) String() string {
+	return fmt.Sprintf("%s:%d", p.PeerAddr.String(), p.Port)
+}
+
 const (
 	//MIN_PORT_RANGE int = 49152
 	MIN_PORT_RANGE int = 60000

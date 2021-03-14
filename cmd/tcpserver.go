@@ -3,6 +3,9 @@ package cmd
 import (
 	"context"
 	"flag"
+	"fmt"
+	"io"
+	"time"
 
 	"github.com/google/subcommands"
 	"github.com/sirupsen/logrus"
@@ -66,37 +69,35 @@ func (s *TcpServerCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 		return subcommands.ExitFailure
 	}
 
-	var errChan chan error
-
-	go func() {
-		buf := make([]byte, 20480)
-		l, err := conn.Read(buf)
+	// go func() {
+	fmt.Printf("Server> Connection from %v\n", conn.Peer.String())
+	buf := ""
+	for {
+		b := make([]byte, 1448)
+		n, err := conn.Read(b)
 		if err != nil {
-			errChan <- err
-			return
+			if err == io.EOF {
+				fmt.Printf("Server> Connection close by peer\n")
+				break
+			}
+			panic(err)
 		}
-		logrus.WithFields(logrus.Fields{
-			"command": "tcp server",
-		}).Infof("message recv %d bytes\n", l)
-		logrus.Println("message recv> ", string(buf))
-		message := "Hello from gotcp server"
-		l, err = conn.Write([]byte(message))
-		if err != nil {
-			errChan <- err
-			return
+		fmt.Printf("Server> Read %d bytes\n", n)
+		buf += string(b)
+		if len(buf) >= 20480 {
+			fmt.Printf("Server> recv all buf %d bytes\n", len(buf))
+			break
 		}
-		logrus.WithFields(logrus.Fields{
-			"command": "tcp server",
-		}).Infof("message send %dbytes\n", l)
-		logrus.Println("message send> ", message)
-	}()
 
-	err = <-errChan
-	if err != nil {
-		logrus.WithFields(logrus.Fields{
-			"command": "tcp server",
-		}).Error(err)
-		return subcommands.ExitFailure
 	}
+	n, err := conn.Write([]byte(buf))
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Server> Write %d bytes\n", n)
+	time.Sleep(20 * time.Second)
+	fmt.Printf("Server> close\n")
+	conn.Close()
+	// }()
 	return subcommands.ExitSuccess
 }
