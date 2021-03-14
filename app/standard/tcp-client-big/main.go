@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"time"
 )
 
 func main() {
@@ -12,7 +11,6 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer conn.Close()
 
 	file, err := os.Open("../../../data/random-data")
 	if err != nil {
@@ -20,7 +18,7 @@ func main() {
 	}
 	defer file.Close()
 
-	buf := make([]byte, 20000)
+	buf := make([]byte, 20480)
 	if _, err := file.Read(buf); err != nil {
 		panic(err)
 	}
@@ -30,12 +28,14 @@ func main() {
 	}
 	fmt.Println("Client> write 2000 bytes to the server")
 
-	time.Sleep(1 * time.Second)
-	res := make([]byte, 1024)
+	res := make([]byte, 20480)
 	if _, err := conn.Read(res); err != nil {
 		panic(err)
 	}
 	fmt.Printf("Server> %s \n", string(res))
 
-	time.Sleep(10 * time.Second)
+	if err := conn.Close(); err != nil {
+		panic(err)
+	}
+	fmt.Println("connection close. exit.")
 }

@@ -2,6 +2,9 @@ package ipv4
 
 import (
 	"fmt"
+	"syscall"
+	"unsafe"
+
 	"github.com/terassyi/gotcp/logger"
 	etherframe "github.com/terassyi/gotcp/packet/ethernet"
 	"github.com/terassyi/gotcp/packet/ipv4"
@@ -9,8 +12,6 @@ import (
 	"github.com/terassyi/gotcp/proto/ethernet"
 	"github.com/terassyi/gotcp/proto/icmp"
 	"github.com/terassyi/gotcp/proto/tcp"
-	"syscall"
-	"unsafe"
 )
 
 type Ipv4 struct {
@@ -88,8 +89,6 @@ func (ip *Ipv4) manage(packet *ipv4.Packet) error {
 	case ipv4.IPICMPv4Protocol:
 		ip.Icmp.Recv(packet.Data)
 	case ipv4.IPTCPProtocol:
-		//ip.Tcp.Recv(packet.Data)
-		//go ip.Tcp.HandlePacket(&packet.Header.Src, packet.Data)
 		ip.Tcp.HandlePacket(&packet.Header.Src, packet.Data)
 	default:
 		return fmt.Errorf("unsupported protocol")
@@ -120,7 +119,6 @@ func (ip *Ipv4) Send(dst ipv4.IPAddress, protocol ipv4.IPProtocol, data []byte) 
 // this function will be called as goroutine
 func (ip *Ipv4) TcpSend() {
 	for {
-		//fmt.Println("[info] waiting tcp packet to send.")
 		addrPacket, ok := <-ip.Tcp.SendQueue
 		if !ok {
 			ip.logger.Error("failed to handle tcp packet for sending")
@@ -138,7 +136,6 @@ func (ip *Ipv4) TcpSend() {
 		if err != nil {
 			ip.logger.Error(err)
 		}
-		//ip.logger.Debugf("[info] %dbytes tcp packet sent\n", l)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"github.com/terassyi/gotcp/packet/ipv4"
 	"github.com/terassyi/gotcp/packet/tcp"
 	"github.com/terassyi/gotcp/proto/port"
+	"sync"
 )
 
 type dialer struct {
@@ -108,8 +109,8 @@ func (d *dialer) getConnection() (*Conn, error) {
 		retransmissionQueue:      make(chan *AddressedPacket, 100),
 		receivedAck: make(chan uint32, 100),
 		closeQueue: make(chan AddressedPacket, 1),
-		rcvBuffer:  make([]byte, window),
-		readyQueue: make(chan []byte, 10),
+		rcvBuffer:  newRcvBuffer(),
+		mutex: sync.RWMutex{},
 		inner:      d.inner,
 		logger:     d.inner.logger,
 	}

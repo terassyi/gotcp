@@ -2,6 +2,8 @@ package tcp
 
 import (
 	"fmt"
+	"sync"
+
 	"github.com/terassyi/gotcp/packet/ipv4"
 	"github.com/terassyi/gotcp/packet/tcp"
 )
@@ -137,15 +139,15 @@ func (l *Listener) establish() error {
 
 func (l *Listener) getConnection() (*Conn, error) {
 	conn := &Conn{
-		tcb:        l.tcb,
-		Peer:       l.tcb.peer,
-		retransmissionQueue:      make(chan *AddressedPacket, 100),
-		receivedAck: make(chan uint32, 100),
-		closeQueue: make(chan AddressedPacket, 1),
-		rcvBuffer:  make([]byte, window),
-		readyQueue: make(chan []byte, 10),
-		inner:      l.inner,
-		logger: l.inner.logger,
+		tcb:                 l.tcb,
+		Peer:                l.tcb.peer,
+		retransmissionQueue: make(chan *AddressedPacket, 100),
+		receivedAck:         make(chan uint32, 100),
+		closeQueue:          make(chan AddressedPacket, 1),
+		rcvBuffer:           newRcvBuffer(),
+		mutex:               sync.RWMutex{},
+		inner:               l.inner,
+		logger:              l.inner.logger,
 	}
 	conn.pushFlag = true
 	// entry connection list

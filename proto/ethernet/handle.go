@@ -2,6 +2,7 @@ package ethernet
 
 import (
 	"fmt"
+
 	"github.com/terassyi/gotcp/interfaces"
 	"github.com/terassyi/gotcp/packet/ethernet"
 	"github.com/terassyi/gotcp/packet/ipv4"

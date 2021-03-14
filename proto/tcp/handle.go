@@ -1,12 +1,13 @@
 package tcp
 
 import (
+	"sync"
+
 	"github.com/terassyi/gotcp/logger"
 	"github.com/terassyi/gotcp/packet/ipv4"
 	"github.com/terassyi/gotcp/packet/tcp"
 	"github.com/terassyi/gotcp/proto"
 	"github.com/terassyi/gotcp/proto/port"
-	"sync"
 )
 
 type Tcp struct {
@@ -77,10 +78,6 @@ func (t *Tcp) HandlePacket(src *ipv4.IPAddress, buf []byte) {
 		t.logger.Errorf("tcp packet serialize error: %v\n", err)
 		return
 	}
-	//if t.logger.DebugMode() {
-	//packet.Show()
-	//}
-
 	// handle packet
 	// listener
 	l, ok := t.listeners[int(packet.Header.DestinationPort)]
