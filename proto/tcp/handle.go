@@ -78,10 +78,6 @@ func (t *Tcp) HandlePacket(src *ipv4.IPAddress, buf []byte) {
 		t.logger.Errorf("tcp packet serialize error: %v\n", err)
 		return
 	}
-	t.logger.Info("---incomming packet in ack initial phase---")
-	packet.Header.Show()
-	t.logger.Info("-------------------------------------------")
-
 	// handle packet
 	// listener
 	l, ok := t.listeners[int(packet.Header.DestinationPort)]

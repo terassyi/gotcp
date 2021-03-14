@@ -5,7 +5,6 @@ import (
 	"io"
 	"net"
 	"time"
-	//"time"
 )
 
 func main() {
@@ -23,22 +22,6 @@ func main() {
 		}
 
 		go func() {
-			//defer conn.Close()
-			//fmt.Printf("Server> Connection from %v\n", conn.RemoteAddr())
-			//buf := make([]byte, 30000)
-			//n, err := conn.Read(buf)
-			//if err != nil {
-			//	panic(err)
-			//}
-			//fmt.Printf("Clinet> %d\n", n)
-			//
-			//if _, err := conn.Write(buf[:n]); err != nil {
-			//	panic(err)
-			//}
-			//fmt.Printf("Server> %s\n", string(buf))
-			//
-			//time.Sleep(time.Second * 30)
-			//fmt.Println("Server> connection close.")
 			fmt.Printf("Server> Connection from %v\n", conn.RemoteAddr())
 			buf := ""
 			for {

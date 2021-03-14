@@ -73,7 +73,6 @@ func (e *Ethernet) ipSend(dstmac *ethernet.HardwareAddress, dstip *ipv4.IPAddres
 			// enqueue in wait queue
 			for {
 				_, ok := <-e.Arp.Updated
-				e.Arp.Table.Show()
 				if ok {
 					return e.ipSend(dstmac, dstip, data)
 				}

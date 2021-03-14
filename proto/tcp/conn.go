@@ -90,12 +90,10 @@ func (c *Conn) activeClose() error {
 	if c.tcb.state == SYN_RECVD || c.tcb.state == ESTABLISHED {
 		c.tcb.FIN_WAIT1()
 		// wait ack of fin
-		c.logger.Info("waiting for ack of fin ", c.tcb.state.String())
 		p, ok := <-c.closeQueue
 		if !ok {
 			return fmt.Errorf("failed to recieve ack of fin.")
 		}
-		// c.tcb.rcv.NXT -= 1
 		if p.Packet.Header.OffsetControlFlag.ControlFlag().Fin() {
 			// simultaneous close
 			c.tcb.rcv.NXT += 1
@@ -104,7 +102,6 @@ func (c *Conn) activeClose() error {
 			}
 			c.tcb.CLOSING()
 			c.tcb.TIME_WAIT()
-			c.logger.Debug("start timer")
 			c.tcb.startMSL()
 			c.tcb.CLOSED()
 			return nil
@@ -202,11 +199,7 @@ func (c *Conn) handle(packet AddressedPacket) error {
 	                 or RCV.NXT =< SEG.SEQ+SEG.LEN-1 < RCV.NXT+RCV.WND
 	*/
 	if c.tcb.rcv.WND == 0 || packet.Packet.Header.Sequence != c.tcb.rcv.NXT {
-		//if err := c.send(tcp.ACK, nil); err != nil {
-		//	return err
-		//}
-		//return fmt.Errorf("recieve window is zero")
-		return fmt.Errorf("recieve window is zero seq=%x rcv.nxt=%x", packet.Packet.Header.Sequence, c.tcb.rcv.NXT)
+		return fmt.Errorf("recieve window is invalid: seq=%x rcv.nxt=%x", packet.Packet.Header.Sequence, c.tcb.rcv.NXT)
 	}
 
 	// second check the RST bit,
@@ -232,24 +225,15 @@ func (c *Conn) handle(packet AddressedPacket) error {
 		switch c.tcb.state {
 		case ESTABLISHED:
 			c.handleEstablished(packet)
-			// c.tcb.rcv.NXT -= 1 // RFC793
 		case FIN_WAIT1:
 			c.handleEstablished(packet)
-			c.logger.Info("packet recv.")
-			packet.Packet.Show()
 			if c.tcb.finSend {
 				c.closeQueue <- packet
 			}
-			//fmt.Println("sent to close channel")
 			//c.closeQueue <- packet
 			return nil
 		case FIN_WAIT2:
 			c.handleEstablished(packet)
-			// c.tcb.rcv.NXT -= 1 // RFC793
-			//if len(c.tcb.retrans) == 0 {
-			//	c.tcb.TIME_WAIT()
-			//}
-			// ack of fin
 			if packet.Packet.Data == nil {
 				c.closeQueue <- packet
 			}
@@ -300,7 +284,6 @@ func (c *Conn) handle(packet AddressedPacket) error {
 			// ack
 		case FIN_WAIT2:
 			c.closeQueue <- packet
-			//if err := c.handleFin(packet); err != nil {
 			if err := c.passiveClose(packet); err != nil {
 				return err
 			}
@@ -324,7 +307,6 @@ func (c *Conn) handleEstablished(packet AddressedPacket) {
 
 		}
 	}
-	// c.tcb.rcv.NXT += 1 // RFC793
 	// send signal retransmission routine
 	c.receivedAck <- packet.Packet.Header.Ack
 }
@@ -334,27 +316,8 @@ func (c *Conn) handleSegment(packet AddressedPacket) error {
 		return nil
 	}
 
-	// check PSH
-	// if packet.Packet.Header.OffsetControlFlag.ControlFlag().Psh() {
-	// 	c.readyQueue <- packet.Packet.Data
-	// 	c.rcvBuffer = append(c.rcvBuffer, packet.Packet.Data...)
-	// 	// c.readyQueue <- c.rcvBuffer
-	// 	c.rcvBuffer = make([]byte, 0, window)
-	// 	c.tcb.rcv.WND = window
-	// 	c.logger.Debug("PSH flag is received. Recover window.")
-	// } else {
-	// 	c.rcvBuffer = append(c.rcvBuffer, packet.Packet.Data...)
-	// 	if len(c.rcvBuffer) >= cap(c.rcvBuffer) {
-	// 		c.readyQueue <- c.rcvBuffer
-	// 		c.rcvBuffer = make([]byte, 0, window)
-	// 		c.tcb.rcv.WND = window
-	// 		c.logger.Debug("Receive buffer is full. Recover window.")
-	// 	}
-	// }
-
 	// Do not check PSH flag.
 	l := len(packet.Packet.Data)
-	c.logger.Info("handler lock")
 	if len(c.rcvBuffer.buf)+l >= cap(c.rcvBuffer.buf) {
 		c.rcvBuffer.init()
 		c.tcb.rcv.WND = window
@@ -363,12 +326,10 @@ func (c *Conn) handleSegment(packet AddressedPacket) error {
 	c.rcvBuffer.buf = append(c.rcvBuffer.buf, packet.Packet.Data...)
 	c.tcb.rcv.NXT = c.tcb.rcv.NXT + uint32(l)
 	c.tcb.rcv.WND = c.tcb.rcv.WND - uint32(l)
-	// c.tcb.snd.NXT--
 	if err := c.send(tcp.ACK, nil); err != nil {
 		return err
 	}
 
-	c.logger.Debug("recieve the segment.")
 	c.rcvBuffer.readable <- struct{}{}
 	return nil
 }
@@ -385,9 +346,7 @@ func (c *Conn) send(flag tcp.ControlFlag, data []byte) error {
 		return err
 	}
 	c.inner.enqueue(c.tcb.peer.PeerAddr, p)
-	if data == nil {
-		// c.tcb.snd.NXT += 1
-	} else {
+	if data != nil {
 		c.tcb.snd.NXT += uint32(len(data))
 	}
 	// add retransmission queue
@@ -397,7 +356,6 @@ func (c *Conn) send(flag tcp.ControlFlag, data []byte) error {
 			Address: c.tcb.peer.PeerAddr,
 		}
 	}
-	//c.tcb.showSeq()
 	return nil
 }
 
@@ -431,15 +389,6 @@ func (c *Conn) Write(b []byte) (int, error) {
 }
 
 func (c *Conn) write(b []byte) (int, error) {
-	//flag := tcp.ACK
-	//if c.pushFlag {
-	//	flag += tcp.PSH
-	//}
-	//if err := c.send(flag, b); err != nil {
-	//	return 0, err
-	//}
-	//// TODO retransmission handle
-	//return len(b), nil
 	return c.writeWithSegment(b)
 }
 
@@ -473,14 +422,11 @@ func (c *Conn) retransmissionHandler() {
 					ackNum:    q.Packet.Header.Sequence + uint32(len(q.Packet.Data)),
 					packet:    q,
 				})
-				//fmt.Printf("[DEBUG] append retransmission queue ack=%x data=%s length=%d\n", q.Packet.Header.Sequence, string(q.Packet.Data), len(queue))
 			case ack := <-c.receivedAck:
-				//fmt.Printf("[DEUBG] ack(=%x) is detected\n", ack)
 				idx := -1
 				for i, p := range queue {
 					if p.ackNum == ack {
 						idx = i
-						//fmt.Printf("[DEBUG] expected ack=%x\n", ack)
 					}
 				}
 				if idx == -1 {
@@ -493,7 +439,6 @@ func (c *Conn) retransmissionHandler() {
 				} else {
 					queue = append(queue[:idx-1], queue[idx:]...)
 				}
-				//fmt.Printf("[DEBUG] retrans queue length is %d\n", len(queue))
 			case n := <-ticker.C:
 				for _, q := range queue {
 					if n.Unix() >= q.timeStamp.Unix()+int64(rto) {
@@ -501,7 +446,6 @@ func (c *Conn) retransmissionHandler() {
 							c.logger.Error(err)
 							continue
 						}
-						//fmt.Printf("[DEBUG] timeout retransmit ack=%x\n", q.ackNum)
 						q.timeStamp = n // reset timestamp
 					}
 				}
