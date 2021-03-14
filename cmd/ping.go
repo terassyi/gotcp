@@ -4,9 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+
 	"github.com/google/subcommands"
 	"github.com/sirupsen/logrus"
-	"github.com/terassyi/gotcp/proto/icmp/ping"
+	"github.com/terassyi/gotcp/pkg/proto/icmp/ping"
 )
 
 type PingCommand struct {

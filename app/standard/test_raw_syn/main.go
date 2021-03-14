@@ -3,7 +3,8 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/terassyi/gotcp/interfaces"
+
+	"github.com/terassyi/gotcp/pkg/interfaces"
 )
 
 func main() {

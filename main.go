@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"flag"
+	"os"
+
 	"github.com/google/subcommands"
 	"github.com/terassyi/gotcp/cmd"
-	"os"
 )
 
 func main() {

@@ -4,15 +4,16 @@ import (
 	"context"
 	"flag"
 	"fmt"
+
 	"github.com/google/subcommands"
 	"github.com/sirupsen/logrus"
-	"github.com/terassyi/gotcp/interfaces"
-	etherframe "github.com/terassyi/gotcp/packet/ethernet"
-	"github.com/terassyi/gotcp/proto/arp"
-	"github.com/terassyi/gotcp/proto/ethernet"
-	"github.com/terassyi/gotcp/proto/icmp"
-	"github.com/terassyi/gotcp/proto/ipv4"
-	"github.com/terassyi/gotcp/proto/tcp"
+	"github.com/terassyi/gotcp/pkg/interfaces"
+	etherframe "github.com/terassyi/gotcp/pkg/packet/ethernet"
+	"github.com/terassyi/gotcp/pkg/proto/arp"
+	"github.com/terassyi/gotcp/pkg/proto/ethernet"
+	"github.com/terassyi/gotcp/pkg/proto/icmp"
+	"github.com/terassyi/gotcp/pkg/proto/ipv4"
+	"github.com/terassyi/gotcp/pkg/proto/tcp"
 )
 
 type TcpServerCommand struct {

@@ -4,9 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+
 	"github.com/google/subcommands"
-	"github.com/terassyi/gotcp/ids"
-	"github.com/terassyi/gotcp/interfaces"
+	"github.com/terassyi/gotcp/pkg/ids"
+	"github.com/terassyi/gotcp/pkg/interfaces"
 )
 
 type IdsCommand struct {
