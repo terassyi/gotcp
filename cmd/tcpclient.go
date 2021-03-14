@@ -10,13 +10,7 @@ import (
 
 	"github.com/google/subcommands"
 	"github.com/sirupsen/logrus"
-	"github.com/terassyi/gotcp/pkg/interfaces"
-	etherframe "github.com/terassyi/gotcp/pkg/packet/ethernet"
-	"github.com/terassyi/gotcp/pkg/proto/arp"
-	"github.com/terassyi/gotcp/pkg/proto/ethernet"
-	"github.com/terassyi/gotcp/pkg/proto/icmp"
-	"github.com/terassyi/gotcp/pkg/proto/ipv4"
-	"github.com/terassyi/gotcp/pkg/proto/tcp"
+	"github.com/terassyi/gotcp/pkg/gotcp"
 )
 
 type TcpClientCommand struct {
@@ -56,82 +50,9 @@ func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 			"command": "tcp client",
 		}).Info("debug flag is not set")
 	}
-	iface, err := interfaces.New(c.Iface, "afpacket")
-	if err != nil {
-		panic(err)
-	}
-
-	arpProtocol := arp.New(arp.NewTable(), c.Debug)
-	if err := arpProtocol.SetAddr(c.Iface); err != nil {
-		fmt.Println(err)
-		return subcommands.ExitFailure
-	}
-	e, err := ethernet.New(iface, arpProtocol)
-	icmpProtocol := icmp.New(c.Debug)
-
-	tcpProtocol, err := tcp.New(c.Debug)
-	if err != nil {
-		fmt.Println(err)
-		return subcommands.ExitFailure
-	}
-	ip, err := ipv4.New(e, icmpProtocol, tcpProtocol, c.Debug)
-	if err != nil {
-		fmt.Println(err)
-		return subcommands.ExitFailure
-	}
-	//defer ip.Eth.Close()
-
-	go arpProtocol.Handle()
-	go icmpProtocol.Handle()
-
-	go ip.TcpSend()
-
-	rcvQueue := make(chan []byte, 100)
-	// packet handle
-	go func() {
-		for {
-			buf := make([]byte, 1514)
-			_, err := ip.Eth.Recv(buf)
-			if err != nil {
-				panic(err)
-			}
-			rcvQueue <- buf
-		}
-	}()
-
-	go func() {
-		for {
-			time.Sleep(time.Millisecond * 100) // to work the tcp process, now it has to sleep for goroutine switching maybe...
-			buf, ok := <-rcvQueue
-			if !ok {
-				logrus.WithFields(logrus.Fields{
-					"command": "tcp client",
-				}).Info("failed to receive from interface.")
-			}
-			frame, err := etherframe.New(buf)
-			if err != nil {
-				panic(err)
-			}
-			switch frame.Type() {
-			case etherframe.ETHER_TYPE_IP:
-				ip.HandlePacket(frame.Payload())
-			case etherframe.ETHER_TYPE_ARP:
-				arpProtocol.Recv(frame.Payload())
-			case etherframe.ETHER_TYPE_IPV6:
-				logrus.WithFields(logrus.Fields{
-					"command": "tcp client",
-				}).Info("ipv6 is not supported")
-			default:
-				logrus.WithFields(logrus.Fields{
-					"command": "tcp client",
-				}).Info("unknown ethernet type.")
-			}
-		}
-	}()
-
-	// tcp client
-
-	conn, err := ip.Tcp.Dial(c.Addr, c.Port)
+	// // tcp client
+	gt, err := gotcp.TcpInit(c.Iface, c.Debug)
+	conn, err := gt.Dial(c.Addr, c.Port)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
 			"command": "tcp client",
@@ -139,10 +60,7 @@ func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 		return subcommands.ExitFailure
 	}
 
-	//message := "Hello from gotcp client"
-
 	message := make([]byte, 20480)
-	// message := make([]byte, 6000)
 	file, err := os.Open("data/random-data")
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
@@ -182,6 +100,7 @@ func (c *TcpClientCommand) Execute(_ context.Context, f *flag.FlagSet, _ ...inte
 		}).Error(err)
 		return subcommands.ExitFailure
 	}
+	fmt.Printf("Client> Write %d bytes\n", len(message))
 	time.Sleep(time.Second * 5)
 
 	if err := conn.Close(); err != nil {
