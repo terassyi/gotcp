@@ -2,11 +2,12 @@ package tcp
 
 import (
 	"fmt"
+	"sync"
+
 	"github.com/terassyi/gotcp/logger"
 	"github.com/terassyi/gotcp/packet/ipv4"
 	"github.com/terassyi/gotcp/packet/tcp"
 	"github.com/terassyi/gotcp/proto/port"
-	"sync"
 )
 
 type dialer struct {
@@ -59,14 +60,10 @@ func (d *dialer) establish() error {
 		return err
 	}
 	d.inner.enqueue(d.peer.PeerAddr, p)
-	//d.tcb.snd.NXT += 1
-	//d.tcb.showSeq()
 	// wait to receive syn|ack packet
 	synAck, ok := <-d.queue
 	if !ok {
 	}
-	//d.tcb.rcv.NXT += 1
-	//d.tcb.showSeq()
 	if !synAck.Packet.Header.OffsetControlFlag.ControlFlag().Syn() || !synAck.Packet.Header.OffsetControlFlag.ControlFlag().Ack() {
 		rep, err := tcp.Build(synAck.Packet.Header.DestinationPort, synAck.Packet.Header.SourcePort,
 			0, 0, tcp.RST, 0, 0, nil)
@@ -91,10 +88,8 @@ func (d *dialer) establish() error {
 		if err != nil {
 			return err
 		}
-		//d.tcb.snd.NXT += 1
 		// send ack packet
 		d.inner.enqueue(d.tcb.peer.PeerAddr, ack)
-		//d.tcb.showSeq()
 		d.logger.Debug("completed 3 way handshake")
 		return nil
 	}
@@ -104,15 +99,15 @@ func (d *dialer) establish() error {
 
 func (d *dialer) getConnection() (*Conn, error) {
 	conn := &Conn{
-		tcb:        d.tcb,
-		Peer:       d.peer,
-		retransmissionQueue:      make(chan *AddressedPacket, 100),
-		receivedAck: make(chan uint32, 100),
-		closeQueue: make(chan AddressedPacket, 1),
-		rcvBuffer:  newRcvBuffer(),
-		mutex: sync.RWMutex{},
-		inner:      d.inner,
-		logger:     d.inner.logger,
+		tcb:                 d.tcb,
+		Peer:                d.peer,
+		retransmissionQueue: make(chan *AddressedPacket, 100),
+		receivedAck:         make(chan uint32, 100),
+		closeQueue:          make(chan AddressedPacket, 1),
+		rcvBuffer:           newRcvBuffer(),
+		mutex:               sync.RWMutex{},
+		inner:               d.inner,
+		logger:              d.inner.logger,
 	}
 	conn.pushFlag = true
 	// entry connection list
